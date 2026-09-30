@@ -1,0 +1,2 @@
+import {build} from 'esbuild';import {mkdtemp,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';import {pathToFileURL} from 'node:url';
+const dir=await mkdtemp(path.join(tmpdir(),'brickforge-test-'));try{const outfile=path.join(dir,'test.mjs');await build({entryPoints:['tests/api.test.ts'],bundle:true,platform:'node',format:'esm',outfile,alias:{'cloudflare:workers':path.resolve('tests/runtime-env.ts')}});await import(pathToFileURL(outfile).href)}finally{await rm(dir,{recursive:true,force:true})}
