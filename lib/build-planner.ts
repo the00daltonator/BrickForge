@@ -79,5 +79,7 @@ export function interlockModel(m:Model):Model{
  next=addSupports(next);
  if(checks(next.bricks).components.length>1)next=backingRaft(next);
  const report=checks(next.bricks);if(!report.passed)throw new Error('This design could not be connected automatically. Simplify it or edit the draft. The previous model has been kept.');
- return{...next,notes:[...next.notes,`${report.seamBridges.length} pieces bridge two or more bricks below. Stud connections checked; physical strength still needs a real build test.`]};
+ // Rebuilding an already interlocked model must not repeat its notes.
+ const notes=[...next.notes.filter(n=>!/pieces bridge two or more bricks below/.test(n)),`${report.seamBridges.length} pieces bridge two or more bricks below. Stud connections checked; physical strength still needs a real build test.`];
+ return{...next,notes:[...new Set(notes)]};
 }

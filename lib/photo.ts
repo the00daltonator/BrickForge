@@ -31,12 +31,14 @@ export function subjectMask(p:Pixels,tolerance=18):Mask{
   for(let q=0;q<queue.length;q++){const i=queue[q],x=i%w,y=(i-x)/w;
     for(const j of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1]){if(j<0||bg[j])continue;
       const transparent=p.data[j*4+3]<64;
-      if(transparent||(deltaE(labs[j],labs[i])<tolerance*.55&&seeds.some(s=>deltaE(s,labs[j])<tolerance*1.4))){bg[j]=1;queue.push(j)}}}
+      if(transparent||(deltaE(labs[j],labs[i])<tolerance*.55&&seeds.some(s=>deltaE(s,labs[j])<tolerance))){bg[j]=1;queue.push(j)}}}
   let on=new Uint8Array(n);for(let i=0;i<n;i++)on[i]=bg[i]?0:1;
-  // Largest connected subject region.
-  const label=new Int32Array(n).fill(-1);let best=-1,bestSize=0;
-  for(let i=0;i<n;i++){if(!on[i]||label[i]>=0)continue;const stack=[i];label[i]=i;let size=0;while(stack.length){const c=stack.pop()!;size++;const x=c%w,y=(c-x)/w;for(const j of [x>0?c-1:-1,x<w-1?c+1:-1,y>0?c-w:-1,y<h-1?c+w:-1])if(j>=0&&on[j]&&label[j]<0){label[j]=i;stack.push(j)}}if(size>bestSize){bestSize=size;best=i}}
-  for(let i=0;i<n;i++)on[i]=label[i]===best?1:0;
+  // Keep substantial subject regions (a head separated from the body by a thin gap still
+  // counts) and drop specks of leftover background.
+  const label=new Int32Array(n).fill(-1),sizes=new Map<number,number>();
+  for(let i=0;i<n;i++){if(!on[i]||label[i]>=0)continue;const stack=[i];label[i]=i;let size=0;while(stack.length){const c=stack.pop()!;size++;const x=c%w,y=(c-x)/w;for(const j of [x>0?c-1:-1,x<w-1?c+1:-1,y>0?c-w:-1,y<h-1?c+w:-1])if(j>=0&&on[j]&&label[j]<0){label[j]=i;stack.push(j)}}sizes.set(i,size)}
+  const largest=Math.max(0,...sizes.values());
+  for(let i=0;i<n;i++)on[i]=label[i]>=0&&sizes.get(label[i])!>=largest*.04?1:0;
   // Fill holes: background not reachable from the border becomes subject.
   const outside=new Uint8Array(n),fill:number[]=[];for(const i of border)if(!on[i]&&!outside[i]){outside[i]=1;fill.push(i)}
   for(let q=0;q<fill.length;q++){const i=fill[q],x=i%w,y=(i-x)/w;for(const j of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1])if(j>=0&&!on[j]&&!outside[j]){outside[j]=1;fill.push(j)}}
@@ -136,4 +138,13 @@ export function figureVoxels(p:Pixels,m:Mask,width:number,mode:'sculpture'|'stan
   // Anything above an empty column that never reaches the base would float; the planner adds
   // supports, but a silhouette usually touches the ground along its bottom row.
   return voxels;
+}
+
+/** Uses the whole image as the subject (background removal off). */
+export function fullMask(p:Pixels):Mask{return{w:p.w,h:p.h,on:new Uint8Array(p.w*p.h).fill(1),box:{x:0,y:0,w:p.w,h:p.h},removed:false}}
+/** Preview of the detected subject on a checkerboard, as a data URL (browser only). */
+export function maskPreview(p:Pixels,m:Mask){
+  const c=document.createElement('canvas');c.width=p.w;c.height=p.h;const ctx=c.getContext('2d')!;const img=ctx.createImageData(p.w,p.h);
+  for(let i=0;i<p.w*p.h;i++){const x=i%p.w,y=(i-x)/p.w,check=((x>>3)+(y>>3))%2?236:250;const on=m.on[i];img.data[i*4]=on?p.data[i*4]:check;img.data[i*4+1]=on?p.data[i*4+1]:check;img.data[i*4+2]=on?p.data[i*4+2]:check;img.data[i*4+3]=255}
+  ctx.putImageData(img,0,0);return c.toDataURL('image/png');
 }
