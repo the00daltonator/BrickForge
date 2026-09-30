@@ -13,7 +13,21 @@ export function rgbToLab(r:number,g:number,b:number):Lab{
   return [116*f(y)-16,500*(f(x)-f(y)),200*(f(y)-f(z))];
 }
 export function hexToLab(hex:string):Lab{let v=labCache.get(hex);if(!v){v=rgbToLab(...hexToRgb(hex));labCache.set(hex,v)}return v}
-export const deltaE=(a:Lab,b:Lab)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+/** CIEDE2000 color difference; much better than plain Lab distance around blues and purples. */
+export function deltaE(a:Lab,b:Lab){
+  const [L1,a1,b1]=a,[L2,a2,b2]=b,rad=Math.PI/180;
+  const C1=Math.hypot(a1,b1),C2=Math.hypot(a2,b2),Cm=(C1+C2)/2,G=.5*(1-Math.sqrt(Cm**7/(Cm**7+25**7)));
+  const a1p=a1*(1+G),a2p=a2*(1+G),C1p=Math.hypot(a1p,b1),C2p=Math.hypot(a2p,b2);
+  const h=(x:number,y:number)=>{if(!x&&!y)return 0;const v=Math.atan2(y,x)/rad;return v<0?v+360:v};
+  const h1=h(a1p,b1),h2=h(a2p,b2),dL=L2-L1,dC=C2p-C1p;
+  let dh=0;if(C1p*C2p){dh=h2-h1;if(dh>180)dh-=360;else if(dh<-180)dh+=360}
+  const dH=2*Math.sqrt(C1p*C2p)*Math.sin(dh*rad/2),Lm=(L1+L2)/2,Cpm=(C1p+C2p)/2;
+  let hm=h1+h2;if(C1p*C2p){hm=Math.abs(h1-h2)>180?(h1+h2<360?(h1+h2+360)/2:(h1+h2-360)/2):(h1+h2)/2}
+  const T=1-.17*Math.cos((hm-30)*rad)+.24*Math.cos(2*hm*rad)+.32*Math.cos((3*hm+6)*rad)-.2*Math.cos((4*hm-63)*rad);
+  const SL=1+.015*(Lm-50)**2/Math.sqrt(20+(Lm-50)**2),SC=1+.045*Cpm,SH=1+.015*Cpm*T;
+  const RT=-2*Math.sqrt(Cpm**7/(Cpm**7+25**7))*Math.sin(60*Math.exp(-(((hm-275)/25)**2))*rad);
+  return Math.sqrt((dL/SL)**2+(dC/SC)**2+(dH/SH)**2+RT*(dC/SC)*(dH/SH));
+}
 export const colorDistance=(a:number,b:number)=>deltaE(hexToLab(color(a).hex),hexToLab(color(b).hex));
 
 /** Closest color ID from a candidate list to an RGB value. */
