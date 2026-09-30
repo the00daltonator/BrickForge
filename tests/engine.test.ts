@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {writeFile} from 'node:fs/promises';
+import {writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {recipe,pack,unpack,bom,stockMap,key,checks,PARTS,validateModel,shapesModel} from '../lib/brick-engine';
 import {ldraw,fromLdraw,buildPack,instructions,csv,xml} from '../lib/exports';
 import {meshToModel} from '../lib/mesh';
@@ -15,7 +15,7 @@ const escaped=instructions({...m,name:'<script>alert(1)</script>'},[]);assert(!e
 const obj='v 0 0 0\nv 2 0 0\nv 2 2 0\nv 0 2 0\nv 0 0 2\nv 2 0 2\nv 2 2 2\nv 0 2 2\nf 1 2 3 4\nf 5 8 7 6\nf 1 5 6 2\nf 4 3 7 8\nf 1 4 8 5\nf 2 6 7 3';
 const mesh=meshToModel(new TextEncoder().encode(obj).buffer,'obj','Cube',8,71);assert(mesh.bricks.length);assert.equal(checks(mesh.bricks).overlaps,0);assert.equal(checks(mesh.bricks).unsupported.length,0);
 const plate=pack([{x:0,y:0,z:0,color:71},{x:0,y:1,z:0,color:15},{x:1,y:0,z:0,color:71},{x:1,y:1,z:0,color:4}],'mosaic','test',true);assert.deepEqual(fromLdraw(ldraw(plate),'mosaic').bricks,plate.bricks);
-await writeFile('/workspace/scratch/c75a026bdc92/brickforge-test-pack.zip',Buffer.from(await buildPack(m,inventory).arrayBuffer()));
+await writeFile(join(tmpdir(),'brickforge-test-pack.zip'),Buffer.from(await buildPack(m,inventory).arrayBuffer()));
 console.log('PASS: packing, rotated bricks, six starters, LDraw round trips, plate units, inventory limits, BOM/XML, escaped instructions, mesh voxelization, ZIP generated.');
 const {addSupports}=await import('../lib/brick-engine');for(const type of ['Astronaut','Robot','Cat','Dinosaur']){const supported=addSupports(recipe(type));assert.equal(checks(supported.bricks).unsupported.length,0);assert.equal(checks(supported.bricks).overlaps,0);}console.log('PASS: support repair eliminates unsupported pieces without collisions.');
 const {COLORS,part:lookupPart,ldrawColor,tileFinish}=await import('../lib/brick-engine');

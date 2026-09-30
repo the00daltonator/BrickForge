@@ -2,6 +2,7 @@ import editorPartColors from './editor-part-colors.json';
 import catalogColors from './catalog-colors.json';
 import catalogBricks from './catalog-bricks.json';
 import bricklinkColors from './bricklink-colors.json';
+import minifigData from './minifig-data.json';
 export type Color = { id:number; bl:number; name:string; hex:string;transparent?:boolean };
 const BASE_COLORS:Color[] = [
 {id:15,bl:1,name:'White',hex:'#f4f4f4'},{id:0,bl:11,name:'Black',hex:'#21262d'},{id:71,bl:86,name:'Light bluish gray',hex:'#a0a5a9'},{id:72,bl:85,name:'Dark bluish gray',hex:'#6c6e68'},{id:4,bl:5,name:'Red',hex:'#c91a09'},{id:25,bl:4,name:'Orange',hex:'#fe8a18'},{id:14,bl:3,name:'Yellow',hex:'#f2cd37'},{id:19,bl:2,name:'Tan',hex:'#e4cd9e'},{id:1,bl:7,name:'Blue',hex:'#0055bf'},{id:9,bl:62,name:'Light blue',hex:'#b4d2e3'},{id:2,bl:6,name:'Green',hex:'#237841'},{id:10,bl:36,name:'Bright green',hex:'#4b9f4a'},{id:70,bl:88,name:'Reddish brown',hex:'#582a12'},{id:22,bl:47,name:'Purple',hex:'#81007b'},{id:13,bl:23,name:'Pink',hex:'#fc97ac'},{id:27,bl:34,name:'Lime',hex:'#bbd431'}];
@@ -32,25 +33,72 @@ PARTS.push(
 {id:'4032a',name:'Round plate 2 × 2',w:2,d:2,h:1,cost:.15,shape:'round'});
 export const color=(id:number)=>COLORS.find(c=>c.id===id)||{id,bl:-1,name:`Unknown color ${id}`,hex:'#888888'};
 export const part=(id:string)=>PARTS.find(p=>p.id===id)!;
+// Names and planning prices for any catalog part, including non-grid minifigure elements.
+const MINIFIG_NAMES:Record<string,string>={...minifigData.names,[minifigData.head.id]:minifigData.head.name,[minifigData.shortLegs.id]:minifigData.shortLegs.name,...Object.fromEntries([...minifigData.hair,...minifigData.hats,...minifigData.neck,...minifigData.tools].map(r=>[r.id,r.name]))};
+export const partName=(id:string,fallback?:string)=>PARTS.find(p=>p.id===id)?.name??MINIFIG_NAMES[id]??fallback??`Part ${id}`;
+export const partCost=(id:string)=>PARTS.find(p=>p.id===id)?.cost??(id.startsWith('973')?1.2:id.startsWith('970')||id.startsWith('41879')?.9:id.startsWith('3626')?.35:.6);
 export type Brick={id:string;part:string;color:number;x:number;y:number;z:number;rot:boolean}; // x/z studs, y plates above ground
-export type Model={version:1;name:string;source:string;bricks:Brick[];notes:string[]};
+// extras: loose elements shipped with the build but not placed on the stud grid (minifigure parts, accessories).
+export type Model={version:1;name:string;source:string;bricks:Brick[];notes:string[];extras?:Stock[]};
 export type Stock={part:string;color:number;qty:number;name?:string};
 export type Voxel={x:number;y:number;z:number;color:number};
 export const dims=(b:Brick)=>{const p=part(b.part);return {w:b.rot?p.d:p.w,d:b.rot?p.w:p.d,h:p.h}};
 export const key=(p:string,c:number)=>`${p}:${c}`;
 export function bounds(bs:Brick[]){if(!bs.length)return {x:0,y:0,z:0,w:1,h:1,d:1};let x=Infinity,y=Infinity,z=Infinity,X=-Infinity,Y=-Infinity,Z=-Infinity;for(const b of bs){const d=dims(b);x=Math.min(x,b.x);y=Math.min(y,b.y);z=Math.min(z,b.z);X=Math.max(X,b.x+d.w);Y=Math.max(Y,b.y+d.h);Z=Math.max(Z,b.z+d.d)}return{x,y,z,w:X-x,h:Y-y,d:Z-z};}
-export function bom(bs:Brick[],stock:Stock[]=[]){const map=new Map<string,Stock>();for(const b of bs){const k=key(b.part,b.color);const r=map.get(k);if(r)r.qty++;else map.set(k,{part:b.part,color:b.color,qty:1});}const counts=stockMap(stock);return [...map.values()].map(r=>({...r,owned:Math.min(r.qty,counts.get(key(r.part,r.color))||0),missing:Math.max(0,r.qty-(counts.get(key(r.part,r.color))||0))})).sort((a,b)=>b.qty-a.qty);}
+export function bom(bs:Brick[],stock:Stock[]=[],extras:Stock[]=[]){const map=new Map<string,Stock>();for(const b of bs){const k=key(b.part,b.color);const r=map.get(k);if(r)r.qty++;else map.set(k,{part:b.part,color:b.color,qty:1});}for(const e of extras){const k=key(e.part,e.color);const r=map.get(k);if(r)r.qty+=e.qty;else map.set(k,{part:e.part,color:e.color,qty:e.qty,name:e.name});}const counts=stockMap(stock);return [...map.values()].map(r=>({...r,owned:Math.min(r.qty,counts.get(key(r.part,r.color))||0),missing:Math.max(0,r.qty-(counts.get(key(r.part,r.color))||0))})).sort((a,b)=>b.qty-a.qty);}
 export function stockMap(stock:Stock[]){const m=new Map<string,number>();for(const s of stock)m.set(key(s.part,s.color),(m.get(key(s.part,s.color))||0)+s.qty);return m;}
 export function mergeStock(a:Stock[],b:Stock[]){const m=new Map<string,Stock>();for(const r of [...a,...b]){const k=key(r.part,r.color);const old=m.get(k);m.set(k,{...r,qty:(old?.qty||0)+r.qty})}return [...m.values()].filter(s=>s.qty>0);}
 export function pack(voxels:Voxel[],name:string,source:string,plate=false,stock?:Stock[],swap=false):Model{
  const v=new Map<string,number>();const k=(x:number,y:number,z:number)=>`${x},${y},${z}`;for(const c of voxels)v.set(k(c.x,c.y,c.z),c.color);const used=new Set<string>();const remaining=stock?stockMap(stock):null;const owners=new Map<string,string>();const minX=Math.min(...voxels.map(v=>v.x)),minZ=Math.min(...voxels.map(v=>v.z));const candidates=PARTS.filter(p=>p.h===(plate?1:3)&&!p.shape&&p.w*p.d<=(plate?32:16)&&Math.max(p.w,p.d)<=8).sort((a,b)=>b.w*b.d-a.w*a.d);const bricks:Brick[]=[];
- for(const cell of [...voxels].sort((a,b)=>a.y-b.y||a.z-b.z||a.x-b.x)){
+ const hangs=(c:Voxel)=>c.y>0&&!v.has(k(c.x,c.y-1,c.z))?0:1;
+ for(const cell of [...voxels].sort((a,b)=>a.y-b.y||hangs(a)-hangs(b)||a.z-b.z||a.x-b.x)){
  if(used.has(k(cell.x,cell.y,cell.z)))continue;let chosen:{p:Part;rot:boolean;c:number;score:number}|undefined;
  for(const p of candidates){orientation:for(const rot of (cell.y%2?[true,false]:[false,true])){const w=rot?p.d:p.w,d=rot?p.w:p.d;for(let dx=0;dx<w;dx++)for(let dz=0;dz<d;dz++)if(used.has(k(cell.x+dx,cell.y,cell.z+dz))||v.get(k(cell.x+dx,cell.y,cell.z+dz))!==cell.color)continue orientation;
- let c=cell.color;if(!remaining&&!observedColor(p.id,c)&&p.id!==(plate?'3024':'3005'))continue;if(remaining&&(remaining.get(key(p.id,c))||0)<1){if(!swap)continue;const alt=COLORS.filter(c=>(remaining.get(key(p.id,c.id))||0)>0).sort((a,b)=>distance(a.hex,color(cell.color).hex)-distance(b.hex,color(cell.color).hex))[0];if(!alt)continue;c=alt.id;}const below=new Set<string>();for(let dx=0;dx<w;dx++)for(let dz=0;dz<d;dz++){const id=owners.get(k(cell.x+dx,cell.y-1,cell.z+dz));if(id)below.add(id)}const phase=cell.y%2===1;const stagger=(phase&&cell.x===minX&&w===1?80:0)+(phase&&cell.z===minZ&&d===1?80:0);const score=Math.max(0,below.size-1)*200+stagger+w*d;if(!chosen||score>chosen.score)chosen={p,rot,c,score};}}
+ let c=cell.color;if(!remaining&&!observedColor(p.id,c)&&p.id!==(plate?'3024':'3005'))continue;if(remaining&&(remaining.get(key(p.id,c))||0)<1){if(!swap)continue;const alt=COLORS.filter(c=>(remaining.get(key(p.id,c.id))||0)>0).sort((a,b)=>distance(a.hex,color(cell.color).hex)-distance(b.hex,color(cell.color).hex))[0];if(!alt)continue;c=alt.id;}const below=new Set<string>();for(let dx=0;dx<w;dx++)for(let dz=0;dz<d;dz++){const id=owners.get(k(cell.x+dx,cell.y-1,cell.z+dz));if(id)below.add(id)}const phase=cell.y%2===1;const stagger=(phase&&cell.x===minX&&w===1?80:0)+(phase&&cell.z===minZ&&d===1?80:0);const floating=cell.y>0&&!below.size?1000:0;const score=Math.max(0,below.size-1)*200+stagger+w*d-floating;if(!chosen||score>chosen.score)chosen={p,rot,c,score};}}
  if(!chosen)continue;const {p,rot,c}=chosen;const b:Brick={id:`b${bricks.length}`,part:p.id,color:c,x:cell.x,y:cell.y*(plate?1:3),z:cell.z,rot};bricks.push(b);const d=dims(b);for(let dx=0;dx<d.w;dx++)for(let dz=0;dz<d.d;dz++){used.add(k(cell.x+dx,cell.y,cell.z+dz));owners.set(k(cell.x+dx,cell.y,cell.z+dz),b.id)}if(remaining)remaining.set(key(p.id,c),(remaining.get(key(p.id,c))||0)-1);
  }
  return{version:1,name,source,bricks,notes:used.size<voxels.length?[`${voxels.length-used.size} cells could not be filled from your inventory. This is a partial build; review before exporting.`]:[]};
+}
+// Mixed packing for plate-height voxels (y in plates). Bricks fill three aligned plate
+// layers of one color; plates keep faces, trims and thin details. Pieces that span
+// lower seams and rest on studs are preferred, so fewer support columns are needed.
+// Distance (in studs, through same-colored cells of one layer) from each overhanging cell to
+// the nearest cell with something beneath it. Supported cells score 0; unreachable cells -1.
+function overhangReach(voxels:Voxel[],v:Map<string,number>,k:(x:number,y:number,z:number)=>string){
+ const dist=new Map<string,number>(),queue:Voxel[]=[];
+ for(const c of voxels)if(c.y===0||v.has(k(c.x,c.y-1,c.z))){dist.set(k(c.x,c.y,c.z),0);queue.push(c)}
+ for(let i=0;i<queue.length;i++){const c=queue[i],n=dist.get(k(c.x,c.y,c.z))!+1;for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){const nk=k(c.x+dx,c.y,c.z+dz);if(dist.has(nk)||v.get(nk)!==c.color)continue;dist.set(nk,n);queue.push({x:c.x+dx,y:c.y,z:c.z+dz,color:c.color})}}
+ return(c:Voxel)=>dist.get(k(c.x,c.y,c.z))??-1;
+}
+export function packMixed(voxels:Voxel[],name:string,source:string):Model{
+ const k=(x:number,y:number,z:number)=>`${x},${y},${z}`;const v=new Map<string,number>();for(const c of voxels)v.set(k(c.x,c.y,c.z),c.color);
+ const used=new Set<string>(),owners=new Map<string,string>(),bricks:Brick[]=[];if(!voxels.length)return{version:1,name,source,bricks,notes:['No cells to build.']};
+ const minX=Math.min(...voxels.map(c=>c.x)),minZ=Math.min(...voxels.map(c=>c.z));
+ const candidates=PARTS.filter(p=>!p.shape&&(p.h===1||p.h===3)&&p.w*p.d<=(p.h===3?16:24)&&Math.max(p.w,p.d)<=8).sort((a,b)=>b.w*b.d*b.h-a.w*a.d*a.h);
+ const reach=overhangReach(voxels,v,k);
+ // Within a layer, the overhanging cells farthest from support pick first, so brim corners
+ // and ledges claim a piece that reaches back onto supported cells before edges use them.
+ for(const cell of [...voxels].sort((a,b)=>a.y-b.y||reach(b)-reach(a)||a.z-b.z||a.x-b.x)){
+  if(used.has(k(cell.x,cell.y,cell.z)))continue;const course=Math.floor(cell.y/3)%2===1,hanging=reach(cell)!==0;
+  let chosen:{p:Part;rot:boolean;x:number;z:number;score:number}|undefined;
+  for(const p of candidates){if(!observedColor(p.id,cell.color)&&p.id!=='3024')continue;
+   for(const rot of p.w===p.d?[false]:course?[true,false]:[false,true]){const w=rot?p.d:p.w,d=rot?p.w:p.d;
+    // Supported cells anchor pieces at their min corner (cells arrive in ascending order);
+    // overhanging cells may sit anywhere inside the piece so it can reach back to support.
+    for(let ox=0;ox<(hanging?w:1);ox++)placement:for(let oz=0;oz<(hanging?d:1);oz++){const x=cell.x-ox,z=cell.z-oz;
+     for(let dx=0;dx<w;dx++)for(let dz=0;dz<d;dz++)for(let dy=0;dy<p.h;dy++){const c=k(x+dx,cell.y+dy,z+dz);if(used.has(c)||v.get(c)!==cell.color)continue placement}
+     const below=new Set<string>();for(let dx=0;dx<w;dx++)for(let dz=0;dz<d;dz++){const id=owners.get(k(x+dx,cell.y-1,z+dz));if(id)below.add(id)}
+     const stagger=(course&&x===minX&&w===1?80:0)+(course&&z===minZ&&d===1?80:0),floating=cell.y>0&&!below.size?1000:0;
+     // Leave neighbors that overhang (same color, nothing beneath) something to span onto:
+     // a tall brick must not swallow their layer, and a piece should not strand them.
+     let steals=0;for(let dy=0;dy<p.h;dy++)for(let dx=-1;dx<=w;dx++)for(let dz=-1;dz<=d;dz++){const inX=dx>=0&&dx<w,inZ=dz>=0&&dz<d;if(inX===inZ)continue;const n=k(x+dx,cell.y+dy,z+dz);if(v.get(n)===cell.color&&!used.has(n)&&cell.y+dy>0&&!v.has(k(x+dx,cell.y+dy-1,z+dz)))steals+=dy?4:3}
+     const score=w*d*p.h*2+Math.max(0,below.size-1)*200+stagger-floating-steals*100;
+     if(!chosen||score>chosen.score)chosen={p,rot,x,z,score};
+    }}}
+  if(!chosen)continue;const b:Brick={id:`b${bricks.length}`,part:chosen.p.id,color:cell.color,x:chosen.x,y:cell.y,z:chosen.z,rot:chosen.rot};bricks.push(b);const d=dims(b);
+  for(let dx=0;dx<d.w;dx++)for(let dz=0;dz<d.d;dz++)for(let dy=0;dy<d.h;dy++){used.add(k(b.x+dx,b.y+dy,b.z+dz));owners.set(k(b.x+dx,b.y+dy,b.z+dz),b.id)}
+ }
+ return{version:1,name,source,bricks,notes:used.size<voxels.length?[`${voxels.length-used.size} cells could not be filled.`]:[]};
 }
 export function unpack(m:Model):{voxels:Voxel[];plate:boolean}{const plate=m.bricks.some(b=>part(b.part).h===1);const voxels:Voxel[]=[];for(const b of m.bricks){const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)for(let y=0;y<(plate?d.h:1);y++)voxels.push({x:b.x+x,y:(plate?b.y:b.y/3)+y,z:b.z+z,color:b.color})}return{voxels,plate};}
 export const distance=(a:string,b:string)=>{const rgb=(s:string)=>[1,3,5].map(i=>parseInt(s.slice(i,i+2),16));const A=rgb(a),B=rgb(b);return A.reduce((v,x,i)=>v+(x-B[i])**2,0)};
@@ -81,7 +129,7 @@ export function checks(bs:Brick[]){
  return{overlaps,unsupported,components,disconnected,contacts,seamBridges,weak,tippingRisk,connected:bs.length>0&&components.length===1,passed:bs.length>0&&!overlaps&&!unsupported.length&&components.length===1};
 }
 export function layers(bs:Brick[]){return [...new Set(bs.map(b=>b.y))].sort((a,b)=>a-b)}
-export function validateModel(raw:unknown):Model{const m=raw as Model;if(!m||m.version!==1||!Array.isArray(m.bricks)||!m.bricks.length||m.bricks.length>12000)throw new Error('Invalid project. Expected a BrickForge project with 1–12,000 bricks.');const ids=new Set();for(const b of m.bricks){if(!part(b.part)||!COLORS.some(c=>c.id===b.color)||typeof b.rot!=='boolean'||![b.x,b.y,b.z].every(n=>Number.isInteger(n)&&Math.abs(n)<=256)||b.y<0)throw new Error('Unsupported part, color, or coordinates in project.');if(ids.has(b.id))throw new Error('Duplicate brick IDs.');ids.add(b.id)}return{version:1,name:String(m.name||'Imported build').slice(0,120),source:String(m.source||'Project import').slice(0,200),bricks:m.bricks,notes:Array.isArray(m.notes)?m.notes.map(String):[]};}
+export function validateModel(raw:unknown):Model{const m=raw as Model;if(!m||m.version!==1||!Array.isArray(m.bricks)||!m.bricks.length||m.bricks.length>12000)throw new Error('Invalid project. Expected a BrickForge project with 1–12,000 bricks.');const ids=new Set();for(const b of m.bricks){if(!part(b.part)||!COLORS.some(c=>c.id===b.color)||typeof b.rot!=='boolean'||![b.x,b.y,b.z].every(n=>Number.isInteger(n)&&Math.abs(n)<=256)||b.y<0)throw new Error('Unsupported part, color, or coordinates in project.');if(ids.has(b.id))throw new Error('Duplicate brick IDs.');ids.add(b.id)}const extras=Array.isArray(m.extras)?m.extras.filter(e=>e&&typeof e.part==='string'&&/^[a-z0-9._-]{1,40}$/i.test(e.part)&&COLORS.some(c=>c.id===e.color)&&Number.isInteger(e.qty)&&e.qty>0&&e.qty<=999).slice(0,200).map(e=>({part:e.part,color:e.color,qty:e.qty,...(e.name?{name:String(e.name).slice(0,160)}:{})})):[];return{version:1,name:String(m.name||'Imported build').slice(0,120),source:String(m.source||'Project import').slice(0,200),bricks:m.bricks,notes:Array.isArray(m.notes)?m.notes.map(String):[],...(extras.length?{extras}:{})};}
 export function shapesModel(raw:unknown,name:string):Model{const a=(raw as {shapes?:unknown[]})?.shapes;if(!Array.isArray(a)||!a.length||a.length>160)throw new Error('AI returned an invalid shape plan. Please try a simpler description.');const map=new Map<string,Voxel>();for(const shape of a){const s=shape as {x:number;y:number;z:number;w:number;h:number;d:number;color:number;type:string};if(![s.x,s.y,s.z,s.w,s.h,s.d].every(Number.isInteger)||Math.abs(s.x)>24||Math.abs(s.z)>24||s.y<0||s.y+s.h>40||s.w<1||s.w>40||s.h<1||s.d<1||s.d>40||!COLORS.some(c=>c.id===s.color))throw new Error('AI design exceeded supported dimensions. Try a smaller build.');for(let x=0;x<s.w;x++)for(let y=0;y<s.h;y++)for(let z=0;z<s.d;z++){if(s.type==='ellipsoid'&&((x+.5-s.w/2)/(s.w/2))**2+((y+.5-s.h/2)/(s.h/2))**2+((z+.5-s.d/2)/(s.d/2))**2>1)continue;const v={x:s.x+x,y:s.y+y,z:s.z+z,color:s.color};map.set(`${v.x},${v.y},${v.z}`,v);if(map.size>14000)throw new Error('This design is too large. Try a smaller size.');}}return pack([...map.values()],name,'AI shape plan · review connections before building');}
 export function addSupports(model:Model):Model{
  const bricks=[...model.bricks],occupied=new Set<string>();const mark=(b:Brick)=>{const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)for(let y=0;y<d.h;y++)occupied.add(`${b.x+x},${b.y+y},${b.z+z}`)};bricks.forEach(mark);const bad=checks(bricks).unsupported;let count=0;

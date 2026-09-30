@@ -1,8 +1,8 @@
-import {Model,Brick,Stock,Part,PARTS,part,color,dims,unpack,stockMap,key,checks,studCells,distance,bom,observedColor,bounds,pack,addSupports} from './brick-engine';
+import {Model,Brick,Stock,Part,PARTS,part,partCost,color,dims,unpack,stockMap,key,checks,studCells,distance,bom,observedColor,bounds,pack,packMixed,addSupports} from './brick-engine';
 export type BuildOptions={mode:'owned'|'budget';swap:boolean;budget:number;prices?:Record<string,number>};
 export type BuildVariant={label:string;model:Model;coverage:number;scale:number;spent:number;swaps:number;removed:number};
-export const unitPrice=(p:string,c:number,prices:Record<string,number>={})=>Math.max(0,prices[key(p,c)]??part(p).cost);
-export const missingCost=(m:Model,s:Stock[],prices:Record<string,number>={})=>bom(m.bricks,s).reduce((n,r)=>n+r.missing*unitPrice(r.part,r.color,prices),0);
+export const unitPrice=(p:string,c:number,prices:Record<string,number>={})=>Math.max(0,prices[key(p,c)]??partCost(p));
+export const missingCost=(m:Model,s:Stock[],prices:Record<string,number>={})=>bom(m.bricks,s,m.extras).reduce((n,r)=>n+r.missing*unitPrice(r.part,r.color,prices),0);
 const cellKey=(x:number,y:number,z:number)=>`${x},${y},${z}`;
 function targetCells(m:Model,scale:number,relief:boolean){
  const {voxels,plate}=unpack(m);const map=new Map<string,{x:number;y:number;z:number;color:number}>();
@@ -62,7 +62,7 @@ export function planBuild(m:Model,stock:Stock[],options:BuildOptions):BuildVaria
  if(!variants.length)throw new Error('These pieces cannot form a supported interpretation of this design. Try a simpler subject, allow color swaps, or add compatible bricks to inventory. Nothing has been purchased.');
  return variants.sort((a,b)=>b.coverage*Math.pow(b.scale,.2)-a.coverage*Math.pow(a.scale,.2));
 }
-export function exportProblems(m:Model,stock:Stock[],mode:string,budget:number,prices:Record<string,number>={}){const c=checks(m.bricks),problems:string[]=[];if(!m.bricks.length)problems.push('The model is empty.');if(c.overlaps)problems.push(`${c.overlaps} overlapping volume cells`);if(c.unsupported.length)problems.push(`${c.unsupported.length} pieces lack a stud connection underneath`);if(c.components.length>1)problems.push(`${c.components.length} separate assemblies`);if(mode==='owned'&&bom(m.bricks,stock).some(r=>r.missing))problems.push('Some required pieces are not in your inventory');if(mode==='budget'&&missingCost(m,stock,prices)>budget+.00001)problems.push('Estimated missing-part cost exceeds your budget');return problems;}
+export function exportProblems(m:Model,stock:Stock[],mode:string,budget:number,prices:Record<string,number>={}){const c=checks(m.bricks),problems:string[]=[];if(!m.bricks.length)problems.push('The model is empty.');if(c.overlaps)problems.push(`${c.overlaps} overlapping volume cells`);if(c.unsupported.length)problems.push(`${c.unsupported.length} pieces lack a stud connection underneath`);if(c.components.length>1)problems.push(`${c.components.length} separate assemblies`);if(mode==='owned'&&bom(m.bricks,stock,m.extras).some(r=>r.missing))problems.push('Some required pieces are not in your inventory');if(mode==='budget'&&missingCost(m,stock,prices)>budget+.00001)problems.push('Estimated missing-part cost exceeds your budget');return problems;}
 
 // Four crossed plate courses join neighboring columns along both axes, including
 // seams between courses. Existing pieces are lifted, preserving their geometry.
@@ -75,7 +75,7 @@ export function backingRaft(m:Model):Model{
 
 export function interlockModel(m:Model):Model{
  let next=m;
- if(m.bricks.every(b=>!part(b.part).shape)){const u=unpack(m);next=pack(u.voxels,m.name,m.source,u.plate);next.notes=[...m.notes,...next.notes,'Rebuilt with staggered courses and pieces that span neighboring bricks.'];}
+ if(m.bricks.every(b=>!part(b.part).shape)){const u=unpack(m),mixed=u.plate&&m.bricks.some(b=>part(b.part).h===3);next=mixed?packMixed(u.voxels,m.name,m.source):pack(u.voxels,m.name,m.source,u.plate);next={...next,extras:m.extras};next.notes=[...m.notes,...next.notes,'Rebuilt with staggered courses and pieces that span neighboring bricks.'];}
  next=addSupports(next);
  if(checks(next.bricks).components.length>1)next=backingRaft(next);
  const report=checks(next.bricks);if(!report.passed)throw new Error('This design could not be connected automatically. Simplify it or edit the draft. The previous model has been kept.');
