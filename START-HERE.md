@@ -2,8 +2,8 @@
 
 This archive includes the application source, bundled parts/colors/set inventories, assets, dependency lockfile, database schema and migrations, tests, and the existing compiled Cloudflare Worker/site output in dist/.
 
-Source revision: 3caa606976e9d876b4659df98048bbb1c927cceb
-Includes staggered/interlocking packing and grayscale instructions.
+Source revision: see `git log` (git history included in this archive).
+Includes characters, photo builds, set packaging, inventory management and moving parts (see README.md).
 
 ## Start here
 
@@ -31,3 +31,16 @@ Included: complete tracked source, bundled catalog, third-party notices present 
 Excluded: node_modules (restored by npm ci), Git history, local caches, private environment files, production secrets, and live visitor/database records. This is a code/site export, not a backup of users' saved projects or inventories.
 
 No new portable-host deployment was tested as part of this export. Existing functionality and limits are documented in README.md.
+
+## Quick test of the 2026-09-30 update
+
+After `npm ci` and `npm run dev`, open http://localhost:5173 and try:
+
+1. **Idea tab:** type "a wizard with a purple robe, a long white beard and a staff" or "a deluxe red car", then press Generate build. This works offline; no AI key is needed.
+2. **Design tab → Character:** pick a preset and set Movement to *Posable* or *Deluxe*, then press Build. Use the **Movement** panel on the right (sliders, Wave, Walk, Dance).
+3. **Design tab → Vehicle:** build the *Deluxe car*, then press *Open everything* or *Drive* in the Movement panel.
+4. **Photo tab:** upload a full-body photo on a plain background and choose *Character figure* or *3D sculpture*.
+5. **Set box tab:** view the box art, download it, and open the instruction booklet.
+6. **My inventory:** add set `31124`, try storage bins, filters and CSV/XML export, then use *I built it* and *Take apart* on the My builds page.
+
+Tests: `node --import tsx tests/character.test.ts` and `node --import tsx tests/joints.test.ts` (plus the original engine, planner, interlock and server tests). See README.md for details and limits.
