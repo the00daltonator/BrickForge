@@ -1,12 +1,13 @@
 import {Brick,Joint,bounds,dims,color,part} from './brick-engine';
 import {Xf,applyXf,isIdentity} from './joints';
+import {FigurePlacement,minifigFaces} from './minifig-3d';
 
 // Shared isometric-style renderer used by the live viewer (canvas), instruction steps and
 // box art (SVG). Painter's algorithm over flat faces; hidden faces between touching bricks
 // are culled so large models stay light.
 export type Pt={x:number;y:number;depth:number};
 export type Face={points:Pt[];fill:string;depth:number;id:string;stroke?:string;width?:number};
-export type SceneOptions={width:number;height:number;yaw?:number;pitch?:number;zoom?:number;frame?:Brick[];stepY?:number;explode?:boolean;selected?:string|null;highlight?:string[];outline?:Set<string>;fade?:Set<string>;cull?:boolean;grayscale?:boolean;margin?:number;transforms?:Map<string,Xf>;joints?:Joint[];pose?:Record<string,number[]>;attached?:Set<string>};
+export type SceneOptions={width:number;height:number;yaw?:number;pitch?:number;zoom?:number;frame?:Brick[];stepY?:number;explode?:boolean;selected?:string|null;highlight?:string[];outline?:Set<string>;fade?:Set<string>;cull?:boolean;grayscale?:boolean;margin?:number;transforms?:Map<string,Xf>;joints?:Joint[];pose?:Record<string,number[]>;attached?:Set<string>;figures?:FigurePlacement[]};
 export const DEFAULT_VIEW={yaw:3.72,pitch:.42};
 
 export const shade=(hex:string,n:number)=>'#'+[1,3,5].map(i=>Math.max(0,Math.min(255,Math.round(parseInt(hex.slice(i,i+2),16)*n))).toString(16).padStart(2,'0')).join('');
@@ -22,7 +23,9 @@ export function projector(frame:Brick[],o:SceneOptions){
 }
 
 export function sceneFaces(bricks:Brick[],o:SceneOptions){
-  const {proj,ca,sa}=projector(o.frame?.length?o.frame:bricks,o);
+  // Minifigures are not grid bricks; stand-in columns keep them inside the camera frame.
+  const figureFrame=(o.figures??[]).flatMap(f=>[0,3,6,9,12].map(dy=>({id:'frame',part:'3003',color:0,x:f.x,y:f.y+dy,z:f.z-.5,rot:false}) as Brick));
+  const {proj,ca,sa}=projector([...(o.frame?.length?o.frame:bricks),...figureFrame],o);
   const visible=o.stepY===undefined?bricks:bricks.filter(b=>b.y<=o.stepY!);
   // Hidden faces are culled against neighbors in the same sub-assembly (they move together).
   const cull=o.cull!==false&&!o.explode,occ=new Set<string>(),cell=(g:string|undefined,x:number,y:number,z:number)=>`${g??''}|${x},${y},${z}`;
@@ -78,6 +81,7 @@ export function sceneFaces(bricks:Brick[],o:SceneOptions){
     const f2=face+w.side*.01;add([pt(f2,spin-.25,w.radius*.52),pt(f2,spin+.25,w.radius*.52),pt(f2,spin+Math.PI-.25,w.radius*.52),pt(f2,spin+Math.PI+.25,w.radius*.52)],shade(hub,.7));
     add(Array.from({length:10},(_,i)=>pt(f2+w.side*.005,i*Math.PI/5,w.radius*.16)),shade(hub,.55));
   }
+  for(const f of o.figures??[])minifigFaces(f,(points,fill,bias=0)=>{const ps=points.map(p=>proj(p[0],p[1],p[2]));faces.push({points:ps,fill,id:'minifig',depth:ps.reduce((n,p)=>n+p.depth,0)/ps.length+bias})},o.grayscale);
   faces.sort((a,b)=>a.depth-b.depth);
   return{faces,proj};
 }

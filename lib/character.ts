@@ -13,8 +13,9 @@ export type Accessory='none'|'sword'|'staff'|'wand'|'shield'|'backpack'|'cape'|'
 export type Ears='none'|'cat'|'bear'|'bunny'|'dog'|'fox'|'mouse';
 export type CharacterKind='person'|'animal'|'robot';
 export type Rig='none'|'basic'|'fancy';
+export type Format='figure'|'minifig';
 export type CharacterSpec={
-  name:string;kind:CharacterKind;rig?:Rig;
+  name:string;kind:CharacterKind;rig?:Rig;format?:Format;
   skin:number;eyes:number;hair:number;hairStyle:HairStyle;
   headwear:Headwear;hat:number;
   shirt:number;outfit:Outfit;accent:number;pants:number;shoes:number;
@@ -80,7 +81,7 @@ export function normalizeSpec(raw:Partial<CharacterSpec>):CharacterSpec{
   if(!['person','animal','robot'].includes(s.kind))s.kind='person';for(const k of ['cape','beard','glasses','tail','minifig'] as const)s[k]=!!s[k];
   for(const k of ['skin','eyes','hair','hat','shirt','accent','pants','shoes','base'] as const)if(!valid(s[k]))s[k]=person[k];
   if(s.muzzle!==null&&!valid(s.muzzle))s.muzzle=null;
-  s.name=String(s.name||'My character').slice(0,80);if(!['none','basic','fancy'].includes(s.rig??'none'))s.rig='none';
+  s.name=String(s.name||'My character').slice(0,80);if(!['none','basic','fancy'].includes(s.rig??'none'))s.rig='none';if(s.format!=='minifig')s.format='figure';
   return s;
 }
 
@@ -217,5 +218,5 @@ export function characterModel(raw:Partial<CharacterSpec>):Model{
   if(spec.minifig&&spec.kind!=='animal'){const fig=minifigFor(spec);extras=fig.parts;notes.push('Includes a matching minifigure made from real plain parts.',...fig.notes)}
   const report=checks(model.bricks);
   notes.push(report.passed?'Character passes stud connection, collision and support checks.':'Review highlighted issues before building.');
-  return{...model,name:spec.name,notes,...(extras?{extras}:{})};
+  return{...model,name:spec.name,notes,...(extras?{extras,figures:[{x:3,y:2,z:-4}]}:{})};
 }

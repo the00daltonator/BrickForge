@@ -43,7 +43,7 @@ function samples(b:Brick){const d=dims(b),pts:number[][]=[];for(let x=0;x<d.w;x+
 export function jointRanges(m:Model):Record<string,[number,number][]>{
   const joints=m.joints??[],out:Record<string,[number,number][]>={};
   for(const j of joints){
-    if(j.kind==='axle'){out[j.id]=j.limits.map(l=>[l[0],l[1]]);continue}
+    if(j.kind==='axle'||j.kind==='minifig'){out[j.id]=j.limits.map(l=>[l[0],l[1]]);continue}
     const moving=subtree(joints,j.child),own=new Set([j.parentBrick,j.childBrick]);
     const occupied=new Set<string>();for(const b of m.bricks){if(moving.has(b.group??'')||own.has(b.id))continue;const d=dims(b);for(let x=0;x<d.w;x++)for(let y=0;y<d.h;y++)for(let z=0;z<d.d;z++)occupied.add(`${b.x+x},${b.y+y},${b.z+z}`)}
     const pts=m.bricks.filter(b=>moving.has(b.group??'')&&!own.has(b.id)).flatMap(samples);

@@ -1,5 +1,5 @@
 import {withoutJoints,jointIssues} from './joints';
-import {Model,Brick,Stock,Part,PARTS,part,partCost,color,dims,unpack,stockMap,key,checks,studCells,distance,bom,observedColor,bounds,pack,packMixed,addSupports} from './brick-engine';
+import {Model,Brick,Stock,Voxel,Part,PARTS,part,partCost,modelChecks,tieComponents,color,dims,unpack,stockMap,key,checks,studCells,distance,bom,observedColor,bounds,pack,packMixed,addSupports} from './brick-engine';
 export type BuildOptions={mode:'owned'|'budget';swap:boolean;budget:number;prices?:Record<string,number>};
 export type BuildVariant={label:string;model:Model;coverage:number;scale:number;spent:number;swaps:number;removed:number};
 export const unitPrice=(p:string,c:number,prices:Record<string,number>={})=>Math.max(0,prices[key(p,c)]??partCost(p));
@@ -71,7 +71,7 @@ export function planBuild(m:Model,stock:Stock[],options:BuildOptions):BuildVaria
  if(!variants.length)throw new Error('These pieces cannot form a supported interpretation of this design. Try a simpler subject, allow color swaps, or add compatible bricks to inventory. Nothing has been purchased.');
  return variants.sort((a,b)=>b.coverage*Math.pow(b.scale,.2)-a.coverage*Math.pow(a.scale,.2));
 }
-export function exportProblems(m:Model,stock:Stock[],mode:string,budget:number,prices:Record<string,number>={}){const c=checks(m.bricks,m.joints),problems:string[]=[];if(!m.bricks.length)problems.push('The model is empty.');if(c.overlaps)problems.push(`${c.overlaps} overlapping volume cells`);if(c.unsupported.length)problems.push(`${c.unsupported.length} pieces lack a stud connection underneath`);if(c.components.length>1)problems.push(`${c.components.length} separate assemblies`);problems.push(...jointIssues(m,c.locked));if(mode==='owned'&&bom(m.bricks,stock,m.extras).some(r=>r.missing))problems.push('Some required pieces are not in your inventory');if(mode==='budget'&&missingCost(m,stock,prices)>budget+.00001)problems.push('Estimated missing-part cost exceeds your budget');return problems;}
+export function exportProblems(m:Model,stock:Stock[],mode:string,budget:number,prices:Record<string,number>={}){const c=modelChecks(m),problems:string[]=[];if(!m.bricks.length)problems.push('The model is empty.');if(c.overlaps)problems.push(`${c.overlaps} overlapping volume cells`);if(c.unsupported.length)problems.push(`${c.unsupported.length} pieces lack a stud connection underneath`);if(c.components.length>1)problems.push(`${c.components.length} separate assemblies`);problems.push(...jointIssues(m,c.locked));if(mode==='owned'&&bom(m.bricks,stock,m.extras).some(r=>r.missing))problems.push('Some required pieces are not in your inventory');if(mode==='budget'&&missingCost(m,stock,prices)>budget+.00001)problems.push('Estimated missing-part cost exceeds your budget');return problems;}
 
 // Four crossed plate courses join neighboring columns along both axes, including
 // seams between courses. Existing pieces are lifted, preserving their geometry.
@@ -82,15 +82,63 @@ export function backingRaft(m:Model):Model{
  return{...m,bricks:[...bricks,...m.bricks.map(p=>({...p,y:p.y+4}))],notes:[...m.notes,`${bricks.length} plates added in a crossed backing raft. The model is four plates taller. Review the updated cost and inventory.`]};
 }
 
+/**
+ * Two crossed plate layers for a flat display base: rows along X underneath, columns along Z on
+ * top, split where the color changes. Every column crosses several rows, so the base is one
+ * connected piece without a backing raft.
+ */
+export function weaveBase(cells:Voxel[]):Brick[]{
+ // Try a few joint offsets for alternate lines; keep the first weave that is one connected piece.
+ let best:Brick[]=[],parts=Infinity;
+ for(const offset of [2,3,4,1,5,6]){const w=weaveWith(cells,offset),n=checks(w).components.length;if(n<parts){best=w;parts=n}if(n===1)break}
+ return best;
+}
+function weaveWith(cells:Voxel[],offset:number):Brick[]{
+ const lens=[12,10,8,6,4,3,2,1],id:Record<number,string>={12:'60479',10:'4477',8:'3460',6:'3666',4:'3710',3:'3623',2:'3023',1:'3024'},out:Brick[]=[];
+ for(const y of [0,1]){const layer=new Map(cells.filter(v=>v.y===y).map(v=>[`${v.x},${v.z}`,v.color]));const alongX=y===0;const lines=new Map<number,number[]>();
+  for(const k of layer.keys()){const [x,z]=k.split(',').map(Number);const line=alongX?z:x,pos=alongX?x:z;lines.set(line,[...(lines.get(line)??[]),pos])}
+  for(const [line,positions] of lines){positions.sort((a,b)=>a-b);let i=0;
+   while(i<positions.length){const at=(p:number)=>layer.get(alongX?`${p},${line}`:`${line},${p}`);const c=at(positions[i])!;let run=1;while(i+run<positions.length&&positions[i+run]===positions[i]+run&&at(positions[i+run])===c)run++;
+    // Split the run into real plate lengths (no lone 1-long end piece); alternate lines take
+    // the pieces in reverse order so the joints are staggered and the layers interlock.
+    // Split the run into real plate lengths with no lone 1-long end piece. Odd lines start with a
+    // 2-long piece so every joint is offset from its neighbors and the two layers interlock.
+    const split=(total:number)=>{const out:number[]=[];let left=total;while(left>0){const n=lens.find(l=>l<=left&&left-l!==1&&observedColor(id[l],c))??lens.find(l=>l<=left&&observedColor(id[l],c))??1;out.push(n);left-=n}return out};
+    const sizes=Math.abs(line)%2===1&&run>offset+1&&observedColor(id[offset],c)?[offset,...split(run-offset)]:split(run);
+    let pos=positions[i];for(const n of sizes){out.push({id:`base-${y}-${out.length}`,part:id[n],color:c,x:alongX?pos:line,y,z:alongX?line:pos,rot:alongX===(part(id[n]).w<part(id[n]).d)});pos+=n}
+    i+=run}}}
+ return out;
+}
 export function interlockModel(m:Model):Model{
  // Jointed builds are packed per moving section already; repacking would merge sections.
  if(m.joints?.length){if(!checks(m.bricks,m.joints).passed)throw new Error('This moving build has connection problems. Check the highlighted pieces.');return m}
  let next=m;
- if(m.bricks.every(b=>!part(b.part).shape)){const u=unpack(m),mixed=u.plate&&m.bricks.some(b=>part(b.part).h===3);next=mixed?packMixed(u.voxels,m.name,m.source):pack(u.voxels,m.name,m.source,u.plate);next={...next,extras:m.extras};next.notes=[...m.notes,...next.notes,'Rebuilt with staggered courses and pieces that span neighboring bricks.'];}
- next=addSupports(next);
- if(checks(next.bricks).components.length>1)next=backingRaft(next);
- const report=checks(next.bricks);if(!report.passed)throw new Error('This design could not be connected automatically. Simplify it or edit the draft. The previous model has been kept.');
+ if(m.bricks.every(b=>!part(b.part).shape)){
+  // Try several packings and keep the one that needs the fewest added supports: brick courses,
+  // and plate-level packing (bricks where three layers line up, plates elsewhere) at three
+  // course offsets. Plates can reach under overhangs and cross seams that bricks cannot.
+  const u=unpack(m);
+  // A flat bottom layer covering most of the footprint is a display base: make it two crossed
+  // plate layers (which lock together) instead of one course of loose bricks side by side.
+  const foot=new Set(u.voxels.map(v=>`${v.x},${v.z}`)).size,bottom=u.voxels.filter(v=>v.y===0).length,base=!u.plate&&bottom>=foot*.6;
+  const plateCells=u.plate?u.voxels:u.voxels.flatMap(v=>base?(v.y===0?[0,1]:[0,1,2].map(d=>v.y*3-1+d)).map(y=>({...v,y})):[0,1,2].map(d=>({...v,y:v.y*3+d})));
+  const woven=base?weaveBase(plateCells):null,rest=woven?plateCells.filter(v=>v.y>1):plateCells;
+  const options=[...(u.plate?[]:[pack(u.voxels,m.name,m.source,false)]),...[0,1,2].map(phase=>packMixed(rest,m.name,m.source,woven??[],phase))];
+  let best:{model:Model;cost:number;ok:boolean}|undefined;
+  for(const o of options){let c=tieComponents(addSupports({...o,extras:m.extras,hang:m.hang,figures:m.figures}));const added=c.bricks.filter(b=>b.id.startsWith('support')||b.id.startsWith('tie')).length;const split=modelChecks(c).components.length>1;if(split)c=backingRaft(c);
+   const cost=added*3+(split?c.bricks.filter(b=>b.id.startsWith('raft')).length*3:0)+c.bricks.length*.05;const ok=modelChecks(c).passed;if(!best||(ok&&!best.ok)||(ok===best.ok&&cost<best.cost))best={model:c,cost,ok}}
+  next={...best!.model,notes:[...m.notes,...best!.model.notes.filter(n=>!m.notes.includes(n)),'Rebuilt with staggered courses and pieces that span neighboring bricks.']};
+ }else{next=tieComponents(addSupports(next));if(modelChecks(next).components.length>1)next=backingRaft(next)}
+ const report=modelChecks(next);if(!report.passed)throw new Error('This design could not be connected automatically. Simplify it or edit the draft. The previous model has been kept.');
  // Rebuilding an already interlocked model must not repeat its notes.
  const notes=[...next.notes.filter(n=>!/pieces bridge two or more bricks below/.test(n)),`${report.seamBridges.length} pieces bridge two or more bricks below. Stud connections checked; physical strength still needs a real build test.`];
  return{...next,notes:[...new Set(notes)]};
+}
+
+/** Re-applies support repair under a support rule; pieces added by an earlier repair are removed first. */
+export function withSupportRule(m:Model,hang:boolean):Model{
+ const base={...m,hang,bricks:m.bricks.filter(b=>!b.id.startsWith('support')&&!b.id.startsWith('tie')),notes:m.notes.filter(n=>!/support bricks\/plates added|tie plates join/.test(n))};
+ const fixed=m.joints?.length?base:tieComponents(addSupports(base)),c=modelChecks(fixed);
+ if(!c.passed&&!m.joints?.length)throw new Error('This model needs support columns under the stricter rule but they could not be added. Keep minimal supports or edit the model.');
+ return fixed;
 }

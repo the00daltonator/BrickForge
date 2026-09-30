@@ -56,10 +56,11 @@ export const partCost=(id:string)=>PARTS.find(p=>p.id===id)?.cost??({'2780':.05,
 export type Brick={id:string;part:string;color:number;x:number;y:number;z:number;rot:boolean;group?:string}; // x/z studs, y plates above ground; group = rigid sub-assembly
 // A joint links a child sub-assembly to its parent. Pivot is in grid units (studs, plates, studs);
 // angles are degrees about the listed axes. Axles (wheels) have no child bricks.
-export type JointKind='pin'|'ball'|'turntable'|'hinge'|'axle';
+export type JointKind='pin'|'ball'|'turntable'|'hinge'|'axle'|'minifig';
 export type Joint={id:string;label:string;role?:string;kind:JointKind;parent:string;child:string;parentBrick:string;childBrick?:string;pivot:[number,number,number];axes:('x'|'y'|'z')[];limits:[number,number][];hardware?:Stock[];wheel?:{radius:number;width:number;side:number;wheel:number;tire:number}};
 // extras: loose elements shipped with the build but not placed on the stud grid (minifigure parts, accessories).
-export type Model={version:1;name:string;source:string;bricks:Brick[];notes:string[];extras?:Stock[];joints?:Joint[];pose?:Record<string,number[]>};
+// hang: pieces may be clipped under the studs of a piece above (fewer added supports).
+export type Model={version:1;name:string;source:string;bricks:Brick[];notes:string[];extras?:Stock[];joints?:Joint[];pose?:Record<string,number[]>;hang?:boolean;format?:'figure'|'minifig';figures?:{x:number;y:number;z:number}[]};
 export type Stock={part:string;color:number;qty:number;name?:string;location?:string};
 export type Voxel={x:number;y:number;z:number;color:number};
 export const dims=(b:Brick)=>{const p=part(b.part);return {w:b.rot?p.d:p.w,d:b.rot?p.w:p.d,h:p.h}};
@@ -108,7 +109,8 @@ export function packMixed(voxels:Voxel[],name:string,source:string,fixed:Brick[]
   if(used.has(k(cell.x,cell.y,cell.z)))continue;const course=Math.floor((cell.y+phase)/3)%2===1,hanging=reach(cell)!==0;
   let chosen:{p:Part;rot:boolean;x:number;z:number;score:number}|undefined;
   for(const p of candidates){if(!observedColor(p.id,cell.color)&&p.id!=='3024')continue;
-   for(const rot of p.w===p.d?[false]:course?[true,false]:[false,true]){const w=rot?p.d:p.w,d=rot?p.w:p.d;
+   const cross=p.h===1?(cell.y+phase)%2===1:course;
+   for(const rot of p.w===p.d?[false]:cross?[true,false]:[false,true]){const w=rot?p.d:p.w,d=rot?p.w:p.d;
     // Supported cells anchor pieces at their min corner (cells arrive in ascending order);
     // overhanging cells may sit anywhere inside the piece so it can reach back to support.
     for(let ox=0;ox<(hanging?w:1);ox++)placement:for(let oz=0;oz<(hanging?d:1);oz++){const x=cell.x-ox,z=cell.z-oz;
@@ -148,30 +150,88 @@ export function studCells(b:Brick){const d=dims(b),shape=part(b.part).shape;cons
 // With joints, sub-assemblies hang from their joints: a piece needs a stud connection above or
 // below (or is joint hardware), and joint links count as connections. Studs joining two
 // different sub-assemblies (other than a joint's own pair) would lock that joint.
-export function checks(bs:Brick[],joints:Joint[]=[]){
+// With hang, a piece with nothing beneath may instead be clipped under studs of a piece
+// above it (reported as hanging); a piece touching nothing above or below stays unsupported.
+export function checks(bs:Brick[],joints:Joint[]=[],opts:{hang?:boolean}={}){
  let overlaps=0;const cells=new Map<string,string>(),studs=new Map<string,string>(),adj=new Map<string,Set<string>>(),unsupported:string[]=[],weak:string[]=[];
  for(const b of bs){adj.set(b.id,new Set());const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)for(let y=0;y<d.h;y++){const k=`${b.x+x},${b.y+y},${b.z+z}`;if(cells.has(k))overlaps++;cells.set(k,b.id)}for(const c of studCells(b))studs.set(`${c.x},${b.y+d.h},${c.z}`,b.id)}
  const contacts:{lower:string;upper:string;studs:number}[]=[];
- for(const b of bs){const d=dims(b),below=new Map<string,number>();for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++){const id=studs.get(`${b.x+x},${b.y},${b.z+z}`);if(id&&id!==b.id)below.set(id,(below.get(id)||0)+1)}let n=0;for(const [id,count] of below){n+=count;adj.get(id)!.add(b.id);adj.get(b.id)!.add(id);contacts.push({lower:id,upper:b.id,studs:count})}if(!joints.length&&b.y!==0&&!n)unsupported.push(b.id);if(b.y>0&&n===1&&d.w*d.d>1)weak.push(b.id)}
+ for(const b of bs){const d=dims(b),below=new Map<string,number>();for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++){const id=studs.get(`${b.x+x},${b.y},${b.z+z}`);if(id&&id!==b.id)below.set(id,(below.get(id)||0)+1)}let n=0;for(const [id,count] of below){n+=count;adj.get(id)!.add(b.id);adj.get(b.id)!.add(id);contacts.push({lower:id,upper:b.id,studs:count})}if(!joints.length&&!opts.hang&&b.y!==0&&!n)unsupported.push(b.id);if(b.y>0&&n===1&&d.w*d.d>1)weak.push(b.id)}
  const jointBricks=new Set(joints.flatMap(j=>[j.parentBrick,j.childBrick].filter(Boolean) as string[])),pairs=new Set(joints.map(j=>`${j.parentBrick}|${j.childBrick}`));
  const brickById=new Map(bs.map(b=>[b.id,b])),locked:string[]=[];
+ const hanging:string[]=[];
+ if(opts.hang&&!joints.length){const below=new Set(contacts.map(c=>c.upper)),above=new Set(contacts.map(c=>c.lower));for(const b of bs){if(b.y===0||below.has(b.id))continue;if(above.has(b.id))hanging.push(b.id);else unsupported.push(b.id)}}
  if(joints.length){const touched=new Set(contacts.flatMap(c=>[c.lower,c.upper]));for(const b of bs)if(b.y!==0&&!touched.has(b.id)&&!jointBricks.has(b.id))unsupported.push(b.id);
   for(const j of joints)if(j.childBrick&&adj.has(j.parentBrick)&&adj.has(j.childBrick)){adj.get(j.parentBrick)!.add(j.childBrick);adj.get(j.childBrick)!.add(j.parentBrick)}
   for(const c of contacts){const a=brickById.get(c.lower)!,u=brickById.get(c.upper)!;if((a.group??'')!==(u.group??'')&&!pairs.has(`${c.lower}|${c.upper}`)&&!pairs.has(`${c.upper}|${c.lower}`))locked.push(c.upper)}}
  const visited=new Set<string>(),components:string[][]=[];for(const b of bs){if(visited.has(b.id))continue;const group:string[]=[],queue=[b.id];visited.add(b.id);while(queue.length){const id=queue.pop()!;group.push(id);for(const next of adj.get(id)!){if(!visited.has(next)){visited.add(next);queue.push(next)}}}components.push(group)}components.sort((a,b)=>b.length-a.length);
  const bridgeMap=new Map<string,Set<string>>();for(const c of contacts){if(!bridgeMap.has(c.upper))bridgeMap.set(c.upper,new Set());bridgeMap.get(c.upper)!.add(c.lower)}const seamBridges=[...bridgeMap].filter(([,ids])=>ids.size>1).map(([id])=>id);const disconnected=components.slice(1).flat();const minY=bs.length?Math.min(...bs.map(b=>b.y)):0,ground=bs.filter(b=>b.y===minY);let mass=0,cx=0,cz=0;for(const b of bs){const d=dims(b),v=d.w*d.d*d.h;mass+=v;cx+=(b.x+d.w/2)*v;cz+=(b.z+d.d/2)*v}const base=ground.length?bounds(ground):null;
  const tippingRisk=!!mass&&(!base||cx/mass<base.x||cx/mass>base.x+base.w||cz/mass<base.z||cz/mass>base.z+base.d);
- return{overlaps,unsupported,components,disconnected,contacts,seamBridges,weak,tippingRisk,locked,connected:bs.length>0&&components.length===1,passed:bs.length>0&&!overlaps&&!unsupported.length&&components.length===1&&!locked.length};
+ return{overlaps,unsupported,hanging,components,disconnected,contacts,seamBridges,weak,tippingRisk,locked,connected:bs.length>0&&components.length===1,passed:bs.length>0&&!overlaps&&!unsupported.length&&components.length===1&&!locked.length};
 }
+/** Checks using the model's own joints and support rule. */
+export const modelChecks=(m:Model)=>checks(m.bricks,m.joints??[],{hang:m.hang});
 export function layers(bs:Brick[]){return [...new Set(bs.map(b=>b.y))].sort((a,b)=>a-b)}
 export function validateModel(raw:unknown):Model{const m=raw as Model;if(!m||m.version!==1||!Array.isArray(m.bricks)||!m.bricks.length||m.bricks.length>12000)throw new Error('Invalid project. Expected a BrickForge project with 1–12,000 bricks.');const ids=new Set();for(const b of m.bricks){if(!part(b.part)||!COLORS.some(c=>c.id===b.color)||typeof b.rot!=='boolean'||![b.x,b.y,b.z].every(n=>Number.isInteger(n)&&Math.abs(n)<=256)||b.y<0)throw new Error('Unsupported part, color, or coordinates in project.');if(ids.has(b.id))throw new Error('Duplicate brick IDs.');if(b.group!==undefined&&(typeof b.group!=='string'||!/^[a-z0-9-]{1,24}$/i.test(b.group)))throw new Error('Invalid sub-assembly name.');ids.add(b.id)}
  const num=(n:unknown)=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=3600;
- const joints=Array.isArray(m.joints)?m.joints.filter(j=>j&&typeof j.id==='string'&&typeof j.label==='string'&&['pin','ball','turntable','hinge','axle'].includes(j.kind)&&typeof j.parent==='string'&&typeof j.child==='string'&&ids.has(j.parentBrick)&&(j.childBrick===undefined||ids.has(j.childBrick))&&Array.isArray(j.pivot)&&j.pivot.length===3&&j.pivot.every(num)&&Array.isArray(j.axes)&&j.axes.length>=1&&j.axes.length<=2&&j.axes.every(a=>['x','y','z'].includes(a))&&Array.isArray(j.limits)&&j.limits.length===j.axes.length&&j.limits.every(l=>Array.isArray(l)&&l.length===2&&l.every(num))).slice(0,64):[];
- const pose:Record<string,number[]>={};if(m.pose&&typeof m.pose==='object')for(const j of joints){const a=m.pose[j.id];if(Array.isArray(a)&&a.every(num))pose[j.id]=a.slice(0,2)}const extras=Array.isArray(m.extras)?m.extras.filter(e=>e&&typeof e.part==='string'&&/^[a-z0-9._-]{1,40}$/i.test(e.part)&&COLORS.some(c=>c.id===e.color)&&Number.isInteger(e.qty)&&e.qty>0&&e.qty<=999).slice(0,200).map(e=>({part:e.part,color:e.color,qty:e.qty,...(e.name?{name:String(e.name).slice(0,160)}:{})})):[];return{version:1,name:String(m.name||'Imported build').slice(0,120),source:String(m.source||'Project import').slice(0,200),bricks:m.bricks,notes:Array.isArray(m.notes)?m.notes.map(String):[],...(extras.length?{extras}:{}),...(joints.length?{joints,pose}:{})};}
+ const joints=Array.isArray(m.joints)?m.joints.filter(j=>j&&typeof j.id==='string'&&typeof j.label==='string'&&['pin','ball','turntable','hinge','axle','minifig'].includes(j.kind)&&typeof j.parent==='string'&&typeof j.child==='string'&&ids.has(j.parentBrick)&&(j.childBrick===undefined||ids.has(j.childBrick))&&Array.isArray(j.pivot)&&j.pivot.length===3&&j.pivot.every(num)&&Array.isArray(j.axes)&&j.axes.length>=1&&j.axes.length<=2&&j.axes.every(a=>['x','y','z'].includes(a))&&Array.isArray(j.limits)&&j.limits.length===j.axes.length&&j.limits.every(l=>Array.isArray(l)&&l.length===2&&l.every(num))).slice(0,64):[];
+ const pose:Record<string,number[]>={};if(m.pose&&typeof m.pose==='object')for(const j of joints){const a=m.pose[j.id];if(Array.isArray(a)&&a.every(num))pose[j.id]=a.slice(0,2)}const extras=Array.isArray(m.extras)?m.extras.filter(e=>e&&typeof e.part==='string'&&/^[a-z0-9._-]{1,40}$/i.test(e.part)&&COLORS.some(c=>c.id===e.color)&&Number.isInteger(e.qty)&&e.qty>0&&e.qty<=999).slice(0,200).map(e=>({part:e.part,color:e.color,qty:e.qty,...(e.name?{name:String(e.name).slice(0,160)}:{})})):[];return{version:1,name:String(m.name||'Imported build').slice(0,120),source:String(m.source||'Project import').slice(0,200),bricks:m.bricks,notes:Array.isArray(m.notes)?m.notes.map(String):[],...(extras.length?{extras}:{}),...(joints.length?{joints,pose}:{}),...(m.hang===true?{hang:true}:{}),...(m.format==='minifig'?{format:'minifig' as const}:{}),...(Array.isArray(m.figures)?{figures:m.figures.filter(f=>f&&[f.x,f.y,f.z].every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=256)).slice(0,8).map(f=>({x:f.x,y:f.y,z:f.z}))}:{})};}
 export function shapesModel(raw:unknown,name:string):Model{const a=(raw as {shapes?:unknown[]})?.shapes;if(!Array.isArray(a)||!a.length||a.length>160)throw new Error('AI returned an invalid shape plan. Please try a simpler description.');const map=new Map<string,Voxel>();for(const shape of a){const s=shape as {x:number;y:number;z:number;w:number;h:number;d:number;color:number;type:string};if(![s.x,s.y,s.z,s.w,s.h,s.d].every(Number.isInteger)||Math.abs(s.x)>24||Math.abs(s.z)>24||s.y<0||s.y+s.h>40||s.w<1||s.w>40||s.h<1||s.d<1||s.d>40||!COLORS.some(c=>c.id===s.color))throw new Error('AI design exceeded supported dimensions. Try a smaller build.');for(let x=0;x<s.w;x++)for(let y=0;y<s.h;y++)for(let z=0;z<s.d;z++){if(s.type==='ellipsoid'&&((x+.5-s.w/2)/(s.w/2))**2+((y+.5-s.h/2)/(s.h/2))**2+((z+.5-s.d/2)/(s.d/2))**2>1)continue;const v={x:s.x+x,y:s.y+y,z:s.z+z,color:s.color};map.set(`${v.x},${v.y},${v.z}`,v);if(map.size>14000)throw new Error('This design is too large. Try a smaller size.');}}return pack([...map.values()],name,'AI shape plan · review connections before building');}
 export function addSupports(model:Model):Model{
- const bricks=[...model.bricks],occupied=new Set<string>();const mark=(b:Brick)=>{const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)for(let y=0;y<d.h;y++)occupied.add(`${b.x+x},${b.y+y},${b.z+z}`)};bricks.forEach(mark);const bad=checks(bricks).unsupported;let count=0;
- for(const brick of [...bricks].filter(b=>bad.includes(b.id)).sort((a,b)=>a.y-b.y)){const d=dims(brick);let best={x:brick.x,z:brick.z,base:0};for(let dx=0;dx<d.w;dx++)for(let dz=0;dz<d.d;dz++){let y=brick.y-1;while(y>=0&&!occupied.has(`${brick.x+dx},${y},${brick.z+dz}`))y--;if(y+1>best.base)best={x:brick.x+dx,z:brick.z+dz,base:y+1};}for(let y=best.base;y<brick.y;){const h=brick.y-y>=3?3:1;const b:Brick={id:`support-${bricks.length}`,part:h===3?'3005':'3024',color:71,x:best.x,y,z:best.z,rot:false};bricks.push(b);mark(b);count++;y+=h;}}
- return{...model,bricks,notes:count?[...model.notes,`${count} support bricks/plates added. Supports change the silhouette; check the model and use Undo if needed.`]:model.notes};
+ const bricks=[...model.bricks],occupied=new Map<string,Brick>(),key3=(x:number,y:number,z:number)=>`${x},${y},${z}`;
+ const mark=(b:Brick)=>{const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)for(let y=0;y<d.h;y++)occupied.set(key3(b.x+x,b.y+y,b.z+z),b)};bricks.forEach(mark);
+ const report=checks(bricks,model.joints??[],{hang:model.hang}),bad=[...report.unsupported];let columns=0,brackets=0;
+ // Hanging is fine only when it leads back to the main build; a separate island is treated
+ // under the strict rule so its lowest pieces get supports.
+ if(model.hang&&report.components.length>1){const below=new Set(report.contacts.map(c=>c.upper));for(const g of report.components.slice(1))for(const id of g){const b=bricks.find(x=>x.id===id)!;if(b.y>0&&!below.has(id)&&!bad.includes(id))bad.push(id)}}
+ // A stud on top of the brick that fills (x,y,z) and ends at y+1.
+ const studAt=(x:number,y:number,z:number)=>{const o=occupied.get(key3(x,y,z));return !!o&&o.y+dims(o).h===y+1&&studCells(o).some(c=>c.x===x&&c.z===z)};
+ const plates:Record<number,string>={2:'3023',3:'3623',4:'3710'};
+ for(const brick of [...bricks].filter(b=>bad.includes(b.id)).sort((a,b)=>a.y-b.y)){
+  const d=dims(brick);let placed=false;
+  // First choice: a short bracket plate under the piece, reaching sideways to a stud nearby.
+  if(brick.y>=2)search:for(let k=1;k<=3;k++)for(let dx=0;dx<d.w;dx++)for(let dz=0;dz<d.d;dz++)for(const [sx,sz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const cx=brick.x+dx,cz=brick.z+dz,y=brick.y-1;let clear=true;for(let i=0;i<=k&&clear;i++)if(occupied.has(key3(cx+sx*i,y,cz+sz*i)))clear=false;
+   if(!clear||!studAt(cx+sx*k,y-1,cz+sz*k))continue;
+   const part=plates[k+1],color=observedColor(part,brick.color)?brick.color:71,alongX=sx!==0;
+   const b:Brick={id:`support-${bricks.length}`,part,color,x:alongX?Math.min(cx,cx+sx*k):cx,y,z:alongX?cz:Math.min(cz,cz+sz*k),rot:alongX};
+   bricks.push(b);mark(b);brackets++;placed=true;break search;}
+  if(placed)continue;
+  // Otherwise a column down to the nearest piece below (or the table).
+  let best={x:brick.x,z:brick.z,base:0};for(let dx=0;dx<d.w;dx++)for(let dz=0;dz<d.d;dz++){let y=brick.y-1;while(y>=0&&!occupied.has(key3(brick.x+dx,y,brick.z+dz)))y--;if(y+1>best.base)best={x:brick.x+dx,z:brick.z+dz,base:y+1};}
+  for(let y=best.base;y<brick.y;){const h=brick.y-y>=3?3:1;const b:Brick={id:`support-${bricks.length}`,part:h===3?'3005':'3024',color:71,x:best.x,y,z:best.z,rot:false};bricks.push(b);mark(b);columns++;y+=h;}
+ }
+ const count=columns+brackets;
+ return{...model,bricks,notes:count?[...model.notes,`${count} support bricks/plates added${brackets?` (${brackets} short bracket plates)`:''}. Supports change the silhouette; check the model and use Undo if needed.`]:model.notes};
+}
+/**
+ * Joins separate assemblies with small tie plates across a seam: on top of two pieces whose
+ * tops are level and side by side, or (when pieces may hang) underneath two level bottoms.
+ * Much lighter than a backing raft; each tie changes the surface by one plate.
+ */
+export function tieComponents(model:Model):Model{
+ let bricks=[...model.bricks],ties=0;const key3=(x:number,y:number,z:number)=>`${x},${y},${z}`;
+ for(let round=0;round<60;round++){
+  const c=checks(bricks,model.joints??[],{hang:model.hang});if(c.components.length<=1)break;
+  const compOf=new Map<string,number>();c.components.forEach((g,i)=>g.forEach(id=>compOf.set(id,i)));
+  const occupied=new Map<string,Brick>();for(const b of bricks){const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)for(let y=0;y<d.h;y++)occupied.set(key3(b.x+x,b.y+y,b.z+z),b)}
+  const hasStud=(b:Brick,x:number,z:number)=>studCells(b).some(s=>s.x===x&&s.z===z);
+  let tie:Brick|undefined;
+  // Small assemblies first, tied to anything in another assembly.
+  outer:for(const g of [...c.components].reverse()){if(compOf.get(g[0])===0&&c.components.length>1&&g===c.components[0])continue;
+   for(const id of g){const b=bricks.find(x=>x.id===id)!,d=dims(b),top=b.y+d.h;
+    for(let dx=0;dx<d.w;dx++)for(let dz=0;dz<d.d;dz++)for(const [sx,sz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+     const x=b.x+dx,z=b.z+dz,nx=x+sx,nz=z+sz;
+     // Top tie.
+     const n=occupied.get(key3(nx,top-1,nz));
+     if(n&&compOf.get(n.id)!==compOf.get(b.id)&&n.y+dims(n).h===top&&hasStud(b,x,z)&&hasStud(n,nx,nz)&&!occupied.has(key3(x,top,z))&&!occupied.has(key3(nx,top,nz))){tie=plate(x,z,nx,nz,top,b);break outer}
+     // Bottom tie (the plate hangs under both pieces).
+     const m=occupied.get(key3(nx,b.y,nz));
+     if(model.hang&&b.y>0&&m&&compOf.get(m.id)!==compOf.get(b.id)&&m.y===b.y&&!occupied.has(key3(x,b.y-1,z))&&!occupied.has(key3(nx,b.y-1,nz))){tie=plate(x,z,nx,nz,b.y-1,b);break outer}
+    }}}
+  if(!tie)break;bricks=[...bricks,tie];ties++;
+ }
+ function plate(x:number,z:number,nx:number,nz:number,y:number,b:Brick):Brick{const alongX=x!==nx;return{id:`tie-${bricks.length}`,part:'3023',color:observedColor('3023',b.color)?b.color:71,x:Math.min(x,nx),y,z:Math.min(z,nz),rot:alongX}}
+ return ties?{...model,bricks,notes:[...model.notes,`${ties} tie plates join separate sections across a seam.`]}:model;
 }
 export function tileFinish(m:Model,stock?:Stock[]):Model{const above=new Set<string>();for(const b of m.bricks){const d=dims(b);for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)above.add(`${b.x+x},${b.y},${b.z+z}`)}const remaining=stock?stockMap(stock):null;if(remaining)for(const b of m.bricks){const k=key(b.part,b.color);remaining.set(k,Math.max(0,(remaining.get(k)||0)-1))}let changed=0;const bricks=m.bricks.map(b=>{const d=dims(b);if(d.h!==1||part(b.part).shape)return b;for(let x=0;x<d.w;x++)for(let z=0;z<d.d;z++)if(above.has(`${b.x+x},${b.y+d.h},${b.z+z}`))return b;const p=PARTS.find(p=>p.shape==='tile'&&p.w===part(b.part).w&&p.d===part(b.part).d&&observedColor(p.id,b.color)&&(!remaining||(remaining.get(key(p.id,b.color))||0)>0));if(!p)return b;if(remaining)remaining.set(key(p.id,b.color),remaining.get(key(p.id,b.color))!-1);changed++;return{...b,part:p.id}});if(!changed)throw new Error('No exposed plates have a matching tile in the selected colors'+(stock?' and inventory.':'. Try a photo mosaic first.'));return{...m,bricks,notes:[...m.notes,`${changed} exposed plates replaced with smooth tiles.`]};}

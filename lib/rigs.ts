@@ -167,8 +167,22 @@ export function vehicleModel(raw:Partial<VehicleSpec>):Model{
   const notes=[`Doors: ${s.doors==='fixed'?'fixed':s.doors==='basic'?'swivel hinge plates (basic)':'hinge bricks (deluxe)'}. ${s.hood?'Opening hood. ':''}${s.trunk?'Opening trunk. ':''}Wheels roll on real wheel-holder plates.`];
   return assemble(s.name,`Vehicle · ${s.doors==='fancy'||s.hood||s.trunk?'deluxe moving parts':'basic moving parts'}`,groups,fixed,joints,[],notes);
 }
-export const jointKindLabel:Record<string,string>={pin:'Technic pin',ball:'Ball joint',turntable:'Turntable',hinge:'Hinge',axle:'Wheel axle'};
+export const jointKindLabel:Record<string,string>={pin:'Technic pin',ball:'Ball joint',turntable:'Turntable',hinge:'Hinge',axle:'Wheel axle',minifig:'Minifigure joint'};
 export const describeHardware=(j:Joint)=>(j.hardware??[]).map(h=>`${h.qty}× ${partName(h.part,h.name)} (${color(h.color).name})`).join(', ');
 
-/** Static or posable character, depending on spec.rig. */
-export function buildCharacter(raw:Partial<CharacterSpec>):Model{const spec=normalizeSpec(raw);return spec.rig&&spec.rig!=='none'?posableCharacter(spec):characterModel(spec)}
+/** Brick-built statue, posable figure, or minifigure, depending on the spec. */
+export function buildCharacter(raw:Partial<CharacterSpec>):Model{const spec=normalizeSpec(raw);if(spec.format==='minifig')return minifigModel(spec);return spec.rig&&spec.rig!=='none'?posableCharacter(spec):characterModel(spec)}
+
+/**
+ * Minifigure version: the matching minifigure from real plain parts, standing on a 4 × 4 display
+ * plate. Its own joints (head, arms, legs) pose like a real minifigure.
+ */
+export function minifigModel(raw:Partial<CharacterSpec>):Model{
+  const spec=normalizeSpec(raw);
+  if(spec.kind==='animal')throw new Error('Animal minifigures need special printed heads that are not plain parts. Use the brick figure for animals.');
+  const fig=minifigFor(spec),plate={id:'stand',part:'3031',color:real('3031',spec.base),x:-2,y:0,z:-2,rot:false};
+  const j=(id:string,label:string,role:string,kind:'minifig',axes:('x'|'y')[],limits:[number,number][]):Joint=>({id,label,role,kind,parent:'stand',child:id,parentBrick:'stand',pivot:[0,0,0],axes,limits});
+  const joints=[j('fig-head','Head turn','neck','minifig',['y'],[[-180,180]]),j('fig-arm-r','Right arm','shoulderR','minifig',['x'],[[-180,180]]),j('fig-arm-l','Left arm','shoulderL','minifig',['x'],[[-180,180]]),j('fig-leg-r','Right leg','hipR','minifig',['x'],[[-90,90]]),j('fig-leg-l','Left leg','hipL','minifig',['x'],[[-90,90]])];
+  return{version:1,name:spec.name,source:'Minifigure · real plain parts on a display plate',format:'minifig',bricks:[plate],extras:fig.parts,figures:[{x:-1,y:1,z:-1}],joints,pose:{},
+    notes:['Minifigure made from real plain parts: head, torso with arms and hands, hips and legs'+(fig.parts.length>3?', plus headwear and accessories':'')+'.',...fig.notes,'Arms, legs and head move like any minifigure.']};
+}

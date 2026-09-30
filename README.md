@@ -145,3 +145,22 @@ Validation: `node --import tsx tests/joints.test.ts` covers:
 ## Static website version
 
 `npx vite build --config vite.static.config.ts` writes `dist-static/`, a browser-only build you can put on any static host (GitHub Pages, Netlify, S3, Cloudflare Pages) with the `catalog/` folder beside the page. The static entry (`static/main.tsx`) sets `window.__BF_STATIC__`, which switches off the server routes (saved workspaces fall back to browser storage, and owner AI is unavailable). Catalog files load relative to the page, and third-party part images are skipped. Everything else runs the same: typed ideas, the character and vehicle designers, photos, moving parts, inventory, instructions and exports.
+
+## Fewer supports and minifigure versions
+
+**Fewer supports.** Rebuilding a model tries several packings (brick courses, plus plate-level packing at three course offsets) and keeps the one that needs the fewest added pieces.
+- **Woven bases:** flat display bases become two crossed plate layers with staggered joints, one connected piece instead of loose bricks.
+- **Minimal supports** (on by default; toggle in the inspector): small pieces may hang from the studs of a piece above them, the way builders attach overhangs. A hanging section must still lead back to the main build; a separate island gets strict supports.
+- **Instructions:** hanging pieces are attached in "Attach underneath" steps right after what they clip under.
+- **Repairs:** a short bracket plate out to a nearby stud comes first, before a column to the table. Separate sections are joined with small tie plates across a seam before a backing raft is considered.
+
+Results:
+- the large castle went from 1,579 pieces (1,396 raft plates) to 283
+- the large rocket from 1,205 to 286
+- the large dinosaur from 1,651 to 614
+- photo figures need no supports at 24 studs wide
+- the Astronaut, Robot and Cat starter buttons now use the character designs, which need almost no supports
+
+**Minifigure versions.** In Design → Character, choose *Minifigure* to build the character as a real minifigure (plain head, torso assembly, hips and legs, hair or headwear, neckwear and a held accessory, in the closest real colors) on a 4 × 4 display plate. Its head, arms and legs pose in the Movement panel, including the walk and wave animations, and the 3D view, box art and instructions draw it. Statue characters also show their matching minifigure on the corner of the display base. Animal characters need special printed heads, so they stay brick figures. Typed ideas understand "minifigure" too.
+
+Validation: `node --import tsx tests/supports.test.ts`.

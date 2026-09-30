@@ -96,7 +96,8 @@ export function interpretIdea(input:string):IdeaResult{
   if(/\bno beard|clean ?shaven\b/.test(text))spec.beard=false;
   if(/\bno hat\b/.test(text))spec.headwear='none';
   if(/\btail\b/.test(text)){spec.tail=true}
-  if(/\b(ball[- ]joints?|deluxe|super[- ]?posable|fully posable)\b/.test(text)){spec.rig='fancy';understood.push('ball joints')}
+  if(/\b(minifig|minifigs|minifigure|minifigures|mini figure)\b/.test(text)&&spec.kind!=='animal'){spec.format='minifig';understood.push('minifigure')}
+  else if(/\b(ball[- ]joints?|deluxe|super[- ]?posable|fully posable)\b/.test(text)){spec.rig='fancy';understood.push('ball joints')}
   else if(/\b(posable|poseable|movable|moveable|moving (arms|legs|parts)|articulated|action figure|joints?|bendy)\b/.test(text)){spec.rig='basic';understood.push('posable joints')}
   const named=input.match(/\b(?:named|called)\s+([A-Z][\w'-]{1,24})/);
   spec.name=named?named[1]:subject?PRESETS[subject].name:'My character';

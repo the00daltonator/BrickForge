@@ -10,6 +10,7 @@ import {CHARACTER_PALETTE,SKIN_TONES} from '@/lib/color';
 import {CharacterSpec,PRESETS,PRESET_GROUPS,HAIR_STYLES,HEADWEAR,OUTFITS,ACCESSORIES,EARS,normalizeSpec,Rig} from '@/lib/character';
 import {buildCharacter} from '@/lib/rigs';
 import {applyPreset} from '@/lib/joints';
+import {figuresOf} from '@/lib/minifig-3d';
 import {buildMinifig,minifigSvg} from '@/lib/minifig';
 import {loadPixels,subjectMask,characterColors} from '@/lib/photo';
 
@@ -35,12 +36,14 @@ export default function CharacterDesigner({spec,onChange,grayscale}:{spec:Charac
   return <div className="designer">
     <input ref={photoInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={e=>fromPhoto(e.target.files?.[0])}/>
     <div className="designer-preview">
-      <div className="designer-3d">{preview&&<Viewer grayscale={grayscale} bricks={preview.bricks} joints={preview.joints} pose={previewPose} selected={null} onSelect={()=>{}}/>}</div>
+      <div className="designer-3d">{preview&&<Viewer grayscale={grayscale} bricks={preview.bricks} joints={preview.joints} pose={previewPose} figures={figuresOf(preview,previewPose)} selected={null} onSelect={()=>{}}/>}</div>
       {fig&&<div className="designer-fig" title="Matching minifigure in the closest real part colors" dangerouslySetInnerHTML={{__html:fig}}/>}
     </div>
     <p className="caption centered">{preview?`${preview.bricks.length} bricks${spec.minifig&&spec.kind!=='animal'?' + matching minifigure':''}${preview.joints?.length?` · ${preview.joints.length} joints`:''} · real part colors only`:'Preview unavailable'}</p>
+    <div className="design-switch" role="radiogroup" aria-label="Build as"><button type="button" role="radio" aria-checked={spec.format!=='minifig'} className={spec.format!=='minifig'?'on':''} onClick={()=>set('format','figure')}>Brick figure</button><button type="button" role="radio" aria-checked={spec.format==='minifig'} className={spec.format==='minifig'?'on':''} disabled={animal} title={animal?'Animal minifigures need special printed heads':undefined} onClick={()=>set('format','minifig')}>Minifigure</button></div>
+    {spec.format==='minifig'?<p className="caption">A real minifigure from plain parts in the closest colors, on a 4 × 4 display plate. Its head, arms and legs pose in the Movement panel.</p>:<>
     <Choice label="Movement" value={spec.rig??'none'} onChange={(v:Rig)=>set('rig',v)} items={[{value:'none',label:'Statue · no moving parts'},{value:'basic',label:'Posable · Technic pins + turning head'},{value:'fancy',label:'Deluxe · ball joints, waist and head turn'}]}/>
-    {spec.rig&&spec.rig!=='none'&&<p className="caption">{spec.rig==='basic'?'Hips and shoulders swing on Technic pin bricks (3700) with friction pins (2780); the head turns on a 2 × 2 turntable.':'Hips and shoulders use ball-joint plates (14417/14704) that swing and spread; the waist and head turn on 2 × 2 turntables.'} No display base, so legs can move.</p>}
+    {spec.rig&&spec.rig!=='none'&&<p className="caption">{spec.rig==='basic'?'Hips and shoulders swing on Technic pin bricks (3700) with friction pins (2780); the head turns on a 2 × 2 turntable.':'Hips and shoulders use ball-joint plates (14417/14704) that swing and spread; the waist and head turn on 2 × 2 turntables.'} No display base, so legs can move.</p>}</>}
     <div className="preset-groups">{PRESET_GROUPS.map(g=><div key={g.label}><span className="starter-label">{g.label.toUpperCase()}</span><div className="preset-chips">{g.keys.map(k=><button type="button" key={k} className={spec.name===PRESETS[k].name&&spec.kind===PRESETS[k].kind?'chosen':''} onClick={()=>onChange(normalizeSpec({...PRESETS[k]}))}>{PRESETS[k].name}</button>)}</div></div>)}</div>
     <div className="designer-actions"><button type="button" className="outline" disabled={reading} onClick={()=>photoInput.current?.click()}>{reading?<LoaderCircle className="spin" size={15}/>:<Camera size={15}/>} Colors from a photo</button><button type="button" className="outline" onClick={surprise}><Shuffle size={15}/> Surprise me</button></div>
     <label className="field-label" htmlFor="character-name">Name</label><input id="character-name" className="text-input" value={spec.name} maxLength={80} onChange={e=>set('name',e.target.value)}/>
