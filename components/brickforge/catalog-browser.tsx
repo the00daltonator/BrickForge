@@ -4,8 +4,9 @@ import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/compo
 import {COLORS,Stock,part,color} from '@/lib/brick-engine';import {CatalogPart,getParts,knownColors} from '@/lib/catalog';
 import {toast} from 'sonner';
 import PartThumb from '@/components/brickforge/part-thumb';
+import {assetUrl} from '@/lib/site';
 export default function CatalogBrowser({onAdd,onPlace}:{onAdd:(s:Stock)=>void;onPlace:(id:string)=>void}){const [parts,setParts]=useState<CatalogPart[]>([]),[cats,setCats]=useState<Record<string,string>>({}),[search,setSearch]=useState(''),[category,setCategory]=useState('all'),[filter,setFilter]=useState('all'),[page,setPage]=useState(0),[selected,setSelected]=useState<CatalogPart|null>(null),[colors,setColors]=useState<number[]>([]),[chosen,setChosen]=useState(15),[qty,setQty]=useState(1),[error,setError]=useState(''),[loading,setLoading]=useState(true);
- useEffect(()=>{Promise.all([getParts(),fetch('/catalog/categories.json').then(r=>r.json() as Promise<Record<string,string>>)]).then(([p,c])=>{
+ useEffect(()=>{Promise.all([getParts(),fetch(assetUrl('catalog/categories.json')).then(r=>r.json() as Promise<Record<string,string>>)]).then(([p,c])=>{
  // Show what people build with first: editor-ready shapes, then everyday categories, stickers and printed variants last.
  const common=new Set([11,14,19,3,20,21,5,9,15,37,6,67,13,59,60,61,65]),rank=(q:CatalogPart)=>part(q[0])?0:q[2]===58||q[2]===17?4:/prd|patd/.test(q[0])?3:common.has(q[2])?1:2;
  setParts([...p].sort((a,b)=>rank(a)-rank(b)));setCats(c)}).catch(e=>setError(e.message)).finally(()=>setLoading(false))},[]);

@@ -141,3 +141,7 @@ Validation: `node --import tsx tests/joints.test.ts` covers:
 - hardware in parts lists
 - inventory fitting behavior
 - idea parsing
+
+## Static website version
+
+`npx vite build --config vite.static.config.ts` writes `dist-static/`, a browser-only build you can put on any static host (GitHub Pages, Netlify, S3, Cloudflare Pages) with the `catalog/` folder beside the page. The static entry (`static/main.tsx`) sets `window.__BF_STATIC__`, which switches off the server routes (saved workspaces fall back to browser storage, and owner AI is unavailable). Catalog files load relative to the page, and third-party part images are skipped. Everything else runs the same: typed ideas, the character and vehicle designers, photos, moving parts, inventory, instructions and exports.
