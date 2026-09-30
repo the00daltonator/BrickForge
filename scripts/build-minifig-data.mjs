@@ -58,3 +58,14 @@ const names=Object.fromEntries([...torsos,...legs].map(r=>[r.id,byId.get(r.id)[1
 const out={source:'Rebrickable snapshot in public/catalog',head,shortLegs,torsos,legs,hair,hats,neck,tools,names};
 writeFileSync(new URL('lib/minifig-data.json',root),JSON.stringify(out));
 console.log(`torsos ${torsos.length}, legs ${legs.length}, hair ${hair.length}, hats ${hats.length}, neck ${neck.length}, tools ${tools.length}`);
+
+// Moving-part elements placed on the grid: register their observed colors for the editor.
+const jointParts=['3700','14417','14704','3680','3679','2429','2430','3831','3830','3937','3938','4600'];
+const editorFile=new URL('lib/editor-part-colors.json',root);const editor=JSON.parse(readFileSync(editorFile,'utf8'));
+for(const id of jointParts)editor[id]=observed(id);
+writeFileSync(editorFile,JSON.stringify(editor));
+// Loose hardware (pins, wheels, tires) listed with the build but not placed on the grid.
+const hardware=Object.fromEntries(['2780','4624','3641'].map(id=>[id,{name:byId.get(id)[1],colors:observed(id)}]));
+const data=JSON.parse(readFileSync(new URL('lib/minifig-data.json',root),'utf8'));data.hardware=hardware;
+writeFileSync(new URL('lib/minifig-data.json',root),JSON.stringify(data));
+console.log('joint part colors and hardware registered');

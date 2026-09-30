@@ -1,3 +1,4 @@
+import {withoutJoints,jointIssues} from './joints';
 import {Model,Brick,Stock,Part,PARTS,part,partCost,color,dims,unpack,stockMap,key,checks,studCells,distance,bom,observedColor,bounds,pack,packMixed,addSupports} from './brick-engine';
 export type BuildOptions={mode:'owned'|'budget';swap:boolean;budget:number;prices?:Record<string,number>};
 export type BuildVariant={label:string;model:Model;coverage:number;scale:number;spent:number;swaps:number;removed:number};
@@ -44,6 +45,14 @@ function assemble(target:ReturnType<typeof targetCells>,stock:Stock[],options:Bu
  return{bricks:kept,coverage:target.size?filled/target.size:0,swaps,removed:bricks.length-kept.length};
 }
 export function planBuild(m:Model,stock:Stock[],options:BuildOptions):BuildVariant[]{
+ // A moving build is offered as designed when the bricks or budget cover it. Otherwise a
+ // static reinterpretation is tried (reshaping cannot keep joints).
+ if(m.joints?.length){
+  const spent=missingCost(m,stock,options.prices),owned=!bom(m.bricks,stock,m.extras).some(r=>r.missing);
+  if(options.mode==='owned'?owned:spent<=options.budget+.00001)return[{label:'As designed, with moving parts',model:m,coverage:1,scale:1,spent,swaps:0,removed:0}];
+  try{return planBuild(withoutJoints(m),stock,options).map(v=>({...v,model:{...v.model,notes:[...v.model.notes,'Fitted to your bricks as a static build; joints were removed.']}}))}
+  catch{throw new Error(options.mode==='owned'?'Your bricks do not cover this moving build, and a static version cannot connect its separate arms and legs. Add the missing pieces (including joint parts) or switch to Full build.':'This moving build is over the parts allowance, and a static version cannot connect its separate arms and legs. Raise the allowance or switch to Full build.')}
+ }
  if(!m.bricks.length)throw new Error('Create or import a model first.');
  if(options.mode==='owned'&&!stock.some(s=>part(s.part)&&s.qty>0))throw new Error('Add supported bricks or plates to your inventory first. Specialty parts stay in inventory, but unmodeled connections cannot be used automatically.');
  if(!Number.isFinite(options.budget)||options.budget<0||options.budget>10000)throw new Error('Enter a budget from $0 to $10,000.');
@@ -62,7 +71,7 @@ export function planBuild(m:Model,stock:Stock[],options:BuildOptions):BuildVaria
  if(!variants.length)throw new Error('These pieces cannot form a supported interpretation of this design. Try a simpler subject, allow color swaps, or add compatible bricks to inventory. Nothing has been purchased.');
  return variants.sort((a,b)=>b.coverage*Math.pow(b.scale,.2)-a.coverage*Math.pow(a.scale,.2));
 }
-export function exportProblems(m:Model,stock:Stock[],mode:string,budget:number,prices:Record<string,number>={}){const c=checks(m.bricks),problems:string[]=[];if(!m.bricks.length)problems.push('The model is empty.');if(c.overlaps)problems.push(`${c.overlaps} overlapping volume cells`);if(c.unsupported.length)problems.push(`${c.unsupported.length} pieces lack a stud connection underneath`);if(c.components.length>1)problems.push(`${c.components.length} separate assemblies`);if(mode==='owned'&&bom(m.bricks,stock,m.extras).some(r=>r.missing))problems.push('Some required pieces are not in your inventory');if(mode==='budget'&&missingCost(m,stock,prices)>budget+.00001)problems.push('Estimated missing-part cost exceeds your budget');return problems;}
+export function exportProblems(m:Model,stock:Stock[],mode:string,budget:number,prices:Record<string,number>={}){const c=checks(m.bricks,m.joints),problems:string[]=[];if(!m.bricks.length)problems.push('The model is empty.');if(c.overlaps)problems.push(`${c.overlaps} overlapping volume cells`);if(c.unsupported.length)problems.push(`${c.unsupported.length} pieces lack a stud connection underneath`);if(c.components.length>1)problems.push(`${c.components.length} separate assemblies`);problems.push(...jointIssues(m,c.locked));if(mode==='owned'&&bom(m.bricks,stock,m.extras).some(r=>r.missing))problems.push('Some required pieces are not in your inventory');if(mode==='budget'&&missingCost(m,stock,prices)>budget+.00001)problems.push('Estimated missing-part cost exceeds your budget');return problems;}
 
 // Four crossed plate courses join neighboring columns along both axes, including
 // seams between courses. Existing pieces are lifted, preserving their geometry.
@@ -74,6 +83,8 @@ export function backingRaft(m:Model):Model{
 }
 
 export function interlockModel(m:Model):Model{
+ // Jointed builds are packed per moving section already; repacking would merge sections.
+ if(m.joints?.length){if(!checks(m.bricks,m.joints).passed)throw new Error('This moving build has connection problems. Check the highlighted pieces.');return m}
  let next=m;
  if(m.bricks.every(b=>!part(b.part).shape)){const u=unpack(m),mixed=u.plate&&m.bricks.some(b=>part(b.part).h===3);next=mixed?packMixed(u.voxels,m.name,m.source):pack(u.voxels,m.name,m.source,u.plate);next={...next,extras:m.extras};next.notes=[...m.notes,...next.notes,'Rebuilt with staggered courses and pieces that span neighboring bricks.'];}
  next=addSupports(next);

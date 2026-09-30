@@ -1,9 +1,26 @@
 import {CharacterSpec,PRESETS,HairStyle,Headwear,Outfit,Accessory,Ears,normalizeSpec} from './character';
+import {VehicleSpec,VEHICLE_PRESETS,normalizeVehicle} from './rigs';
 
 // Offline idea interpreter: turns a short description into a character spec using a
 // vocabulary of subjects, colors, clothing, hair and props. It never invents parts; the
 // spec is built by the same deterministic character engine as the designer.
-export type IdeaResult={kind:'character';spec:CharacterSpec;understood:string[]}|{kind:'starter';starter:string;understood:string[]};
+export type IdeaResult={kind:'character';spec:CharacterSpec;understood:string[]}|{kind:'vehicle';spec:VehicleSpec;understood:string[]}|{kind:'starter';starter:string;understood:string[]};
+const VEHICLE=/\b(car|cars|truck|van|taxi|cab|pickup|hatchback|sedan|coupe|jeep|automobile)\b/;
+const DELUXE=/\b(deluxe|fancy|luxury|premium|advanced|detailed)\b/;
+function interpretVehicle(text:string):IdeaResult{
+  const understood:string[]=[];const base=/\bpolice\b/.test(text)?'police':/\b(taxi|cab)\b/.test(text)?'taxi':/\b(race|racing|sports?)\b/.test(text)?'sports':DELUXE.test(text)?'deluxe':'basic';
+  const spec=normalizeVehicle({...VEHICLE_PRESETS[base]});understood.push(VEHICLE_PRESETS[base].name.toLowerCase());
+  const word=COLOR_WORDS.find(([re])=>re.test(text));if(word&&!/\b(taxi|police)\b/.test(text)){spec.body=word[1];understood.push(`${text.match(word[0])?.[0]??'custom'} body`)}
+  if(/\b(opening doors?|doors? (that )?open|working doors?)\b/.test(text)&&spec.doors==='fixed')spec.doors='basic';
+  if(DELUXE.test(text)){spec.doors='fancy';spec.hood=true;spec.trunk=true}
+  if(/\b(hood|bonnet|engine)\b/.test(text)){spec.hood=true;understood.push('opening hood')}
+  if(/\b(trunk|boot|tailgate)\b/.test(text)){spec.trunk=true;understood.push('opening trunk')}
+  if(/\b(no (moving|opening)|fixed doors?|simple)\b/.test(text)){spec.doors='fixed';spec.hood=false;spec.trunk=false}
+  if(/\bstripes?\b/.test(text))spec.stripe=true;
+  understood.push(spec.doors==='fixed'?'fixed doors':spec.doors==='basic'?'doors on hinge plates':'doors on hinge bricks');
+  const named=text.match(/\b(?:named|called)\s+([a-z][\w'-]{1,24})/);if(named)spec.name=named[1][0].toUpperCase()+named[1].slice(1);
+  return{kind:'vehicle',spec,understood};
+}
 
 const COLOR_WORDS:[RegExp,number][]=[
   [/\bdark ?red|maroon|burgundy|crimson\b/,320],[/\bred\b/,4],[/\bdark ?orange|rust\b/,484],[/\borange|ginger\b/,25],
@@ -45,6 +62,7 @@ const colorIn=(s:string)=>firstMatch(s,COLOR_WORDS);
 export function interpretIdea(input:string):IdeaResult{
   const text=` ${input.toLowerCase().replace(/[^a-z0-9' -]+/g,' ').replace(/\s+/g,' ')} `;
   const understood:string[]=[];
+  if(VEHICLE.test(text))return interpretVehicle(text);
   const subject=firstMatch(text,SUBJECTS);
   if(!subject){const starter=firstMatch(text,STARTERS);if(starter)return{kind:'starter',starter,understood:[`${starter.toLowerCase()} starter build`]};}
   const spec:CharacterSpec=normalizeSpec({...PRESETS[subject??'hero']});
@@ -78,6 +96,8 @@ export function interpretIdea(input:string):IdeaResult{
   if(/\bno beard|clean ?shaven\b/.test(text))spec.beard=false;
   if(/\bno hat\b/.test(text))spec.headwear='none';
   if(/\btail\b/.test(text)){spec.tail=true}
+  if(/\b(ball[- ]joints?|deluxe|super[- ]?posable|fully posable)\b/.test(text)){spec.rig='fancy';understood.push('ball joints')}
+  else if(/\b(posable|poseable|movable|moveable|moving (arms|legs|parts)|articulated|action figure|joints?|bendy)\b/.test(text)){spec.rig='basic';understood.push('posable joints')}
   const named=input.match(/\b(?:named|called)\s+([A-Z][\w'-]{1,24})/);
   spec.name=named?named[1]:subject?PRESETS[subject].name:'My character';
   return{kind:'character',spec:normalizeSpec(spec),understood:understood.filter(Boolean)};

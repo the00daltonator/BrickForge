@@ -144,3 +144,16 @@
 @media (max-width:1200px){.input-tabs svg{display:none!important}.input-tabs button{font-size:12px}}
 /* Keep the workspace in view while a long creator panel (e.g. the character designer) scrolls. */
 @media (min-width:701px){.workspace{position:sticky;top:0;align-self:start;height:max(600px,100vh)}.workspace-tabs{min-height:0!important}.viewport-content{min-height:0}}
+
+/* ---- Moving parts ---- */
+.design-switch{display:grid;grid-template-columns:1fr 1fr;background:#f1f3f6;border-radius:8px;padding:4px;margin-top:14px}
+.design-switch button{border:0;background:none;border-radius:6px;padding:7px;font-size:13px;color:#56626f}
+.design-switch button.on{background:#fff;color:#d85026;font-weight:600;box-shadow:0 1px 2px #0001}
+.designer-preview.single{grid-template-columns:1fr}
+.movement .pose-presets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid #dfe5ea;background:#fff;border-radius:999px;padding:5px 10px;font-size:12px;color:#3b4551}
+.chip.on{border-color:#ea592e;background:#fff3ec;color:#c9582e}
+.joint-row{padding:10px 0;border-top:1px solid #edf0f3}
+.joint-row strong{font-size:13px}.joint-row small{font-size:11px;color:#7b8691}
+.joint-axis{display:grid;grid-template-columns:52px 1fr 38px;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#56626f}
+.joint-axis em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}

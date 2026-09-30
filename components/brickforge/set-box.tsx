@@ -3,7 +3,8 @@ import {useMemo} from 'react';
 import {BookOpen,Download,Image as ImageIcon,Trash2} from 'lucide-react';
 import {Model,bounds,color,partName} from '@/lib/brick-engine';
 import {boxArtSvg,buildSteps,setNumber,ageFor} from '@/lib/exports';
-import {lookFromParts,minifigSvg} from '@/lib/minifig';
+import {lookFromParts,minifigSvg,isMinifigPart} from '@/lib/minifig';
+import {jointKindLabel,describeHardware} from '@/lib/rigs';
 import PartThumb from '@/components/brickforge/part-thumb';
 
 export async function svgToPng(svg:string,width:number,height:number){
@@ -17,7 +18,7 @@ export async function svgToPng(svg:string,width:number,height:number){
 export default function SetBox({model,grayscale,estimate,onDownloadArt,onInstructions,onRemoveMinifig}:{model:Model;grayscale:boolean;estimate:number;onDownloadArt:()=>void;onInstructions:()=>void;onRemoveMinifig:()=>void}){
   const art=useMemo(()=>model.bricks.length?boxArtSvg(model,{grayscale}):'',[model,grayscale]);
   const steps=useMemo(()=>buildSteps(model).length,[model]);const b=bounds(model.bricks);
-  const extras=model.extras||[],look=extras.length?lookFromParts(extras):null,pieces=model.bricks.length+extras.reduce((n,e)=>n+e.qty,0);
+  const all=model.extras||[],extras=all.filter(e=>isMinifigPart(e.part)),look=extras.length?lookFromParts(extras):null,pieces=model.bricks.length+all.reduce((n,e)=>n+e.qty,0),joints=model.joints??[];
   return <div className="set-view">
     <div className="set-art" dangerouslySetInnerHTML={{__html:art}}/>
     <div className="set-facts">
@@ -35,6 +36,7 @@ export default function SetBox({model,grayscale,estimate,onDownloadArt,onInstruc
         <ul>{extras.map(e=><li key={e.part+':'+e.color}><PartThumb id={e.part} color={e.color} size={34}/><span><strong>{partName(e.part,e.name)}</strong><small>#{e.part} · {color(e.color).name}</small></span></li>)}</ul>
         <p className="micro">Real plain parts matched to your character. Printed faces and torso designs are not included.</p></div>
     </section>}
+    {joints.length>0&&<section className="set-minifig"><div className="set-fig-parts"><h3>Moving parts</h3><ul>{joints.map(j=><li key={j.id}><span><strong>{j.label}</strong><small>{jointKindLabel[j.kind]}{j.kind==='axle'?' · rolls freely':` · ${j.limits.map(l=>`${Math.round(l[0])}° to ${Math.round(l[1])}°`).join(' / ')}`}{j.hardware?.length?` · ${describeHardware(j)}`:''}</small></span></li>)}</ul><p className="micro">Box art shows the saved pose. Use the Movement panel to pose it.</p></div></section>}
     <p className="micro">Box art is generated from your model for personal use. <Download size={11}/> exports keep exact part IDs and colors.</p>
   </div>;
 }

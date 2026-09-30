@@ -12,8 +12,9 @@ export type Outfit='plain'|'stripe'|'jacket'|'overalls'|'emblem'|'robe'|'dress'|
 export type Accessory='none'|'sword'|'staff'|'wand'|'shield'|'backpack'|'cape'|'guitar';
 export type Ears='none'|'cat'|'bear'|'bunny'|'dog'|'fox'|'mouse';
 export type CharacterKind='person'|'animal'|'robot';
+export type Rig='none'|'basic'|'fancy';
 export type CharacterSpec={
-  name:string;kind:CharacterKind;
+  name:string;kind:CharacterKind;rig?:Rig;
   skin:number;eyes:number;hair:number;hairStyle:HairStyle;
   headwear:Headwear;hat:number;
   shirt:number;outfit:Outfit;accent:number;pants:number;shoes:number;
@@ -79,11 +80,13 @@ export function normalizeSpec(raw:Partial<CharacterSpec>):CharacterSpec{
   if(!['person','animal','robot'].includes(s.kind))s.kind='person';for(const k of ['cape','beard','glasses','tail','minifig'] as const)s[k]=!!s[k];
   for(const k of ['skin','eyes','hair','hat','shirt','accent','pants','shoes','base'] as const)if(!valid(s[k]))s[k]=person[k];
   if(s.muzzle!==null&&!valid(s.muzzle))s.muzzle=null;
-  s.name=String(s.name||'My character').slice(0,80);
+  s.name=String(s.name||'My character').slice(0,80);if(!['none','basic','fancy'].includes(s.rig??'none'))s.rig='none';
   return s;
 }
 
-export function characterVoxels(spec:CharacterSpec):Voxel[]{
+// rig: posable build. No display base, a narrow belt (legs swing beside it), and props/capes
+// are left to the rig builder so they can hang from hands and backs instead of the base.
+export function characterVoxels(spec:CharacterSpec,opts:{rig?:boolean}={}):Voxel[]{
   const cells=new Map<string,Voxel>();
   const set=(x:number,y:number,z:number,color:number)=>cells.set(`${x},${y},${z}`,{x,y,z,color});
   const has=(x:number,y:number,z:number)=>cells.has(`${x},${y},${z}`);
@@ -94,7 +97,7 @@ export function characterVoxels(spec:CharacterSpec):Voxel[]{
   const long=spec.outfit==='robe'||spec.outfit==='dress';
 
   // Display base, two plates thick so the courses cross and lock together.
-  box(-5,4,0,1,-4,3,spec.base);
+  if(!opts.rig)box(-5,4,0,1,-4,3,spec.base);
   // Legs and shoes, or a floor-length robe/dress.
   if(long){box(-3,2,2,8,-2,1,spec.shirt);if(spec.outfit==='robe')paint(-1,0,2,8,-2,-2,spec.accent);}
   else{
@@ -102,7 +105,7 @@ export function characterVoxels(spec:CharacterSpec):Voxel[]{
   }
   // Belt ledge: wider than the torso so the hands rest on it.
   const belt=long?spec.shirt:spec.outfit==='suit'?0:spec.pants;
-  box(-4,3,9,9,-2,1,belt);
+  if(opts.rig)box(-1,0,9,9,-2,1,belt);else box(-4,3,9,9,-2,1,belt);
   // Torso and arms (sleeves in the shirt color, hands at the bottom).
   box(-3,2,10,17,-2,1,spec.shirt);
   for(const x of [-4,3]){box(x,x,10,11,-1,0,spec.skin);box(x,x,12,17,-1,0,spec.kind==='animal'?spec.skin:spec.shirt)}
@@ -185,6 +188,7 @@ export function characterVoxels(spec:CharacterSpec):Voxel[]{
     case 'mouse':for(const x0 of [-4,1]){box(x0,x0+2,top,top+5,0,0,fur);paint(x0+1,x0+1,top+1,top+4,0,0,inner)}break;
     case 'dog':paint(-4,-4,H0+5,H1,-2,1,spec.hair);paint(3,3,H0+5,H1,-2,1,spec.hair);break;
   }
+  if(opts.rig)return [...cells.values()];
   // Back and side extras that stand on the base.
   if(spec.cape)box(-3,2,2,17,2,2,spec.headwear==='ninja'?spec.hat:spec.accent===spec.shirt?4:spec.accent);
   if(spec.tail&&!spec.cape){const tip=spec.ears==='fox'?15:fur,h=spec.ears==='bunny'?2:8;box(-1,0,2,2+h,3,3,fur);box(-1,0,3+h,4+h,3,3,tip)}
@@ -199,6 +203,10 @@ export function characterVoxels(spec:CharacterSpec):Voxel[]{
   return [...cells.values()];
 }
 
+/** The matching minifigure for a character, from real plain parts. */
+export function minifigFor(spec:CharacterSpec){
+  return buildMinifig({skin:spec.skin,hair:spec.hair,hairStyle:spec.hairStyle,headwear:spec.headwear,hat:spec.hat,shirt:spec.shirt,pants:spec.pants,neck:spec.cape?'cape':spec.beard?'beard':spec.accessory==='backpack'?'backpack':spec.headwear==='ninja'?'ninja':undefined,neckColor:spec.cape?spec.accent:spec.beard?spec.hair:spec.accent,tool:['sword','staff','wand','shield','guitar'].includes(spec.accessory)?spec.accessory:undefined,toolColor:spec.accessory==='shield'?spec.accent:71});
+}
 export function characterModel(raw:Partial<CharacterSpec>):Model{
   const spec=normalizeSpec(raw);
   let model=packMixed(characterVoxels(spec),spec.name,`Character · ${spec.kind==='animal'?'animal':spec.kind==='robot'?'robot':'figure'} · brick-built`);
@@ -206,10 +214,7 @@ export function characterModel(raw:Partial<CharacterSpec>):Model{
   model=interlockModel(model);
   const notes=[...model.notes];
   let extras=undefined;
-  if(spec.minifig&&spec.kind!=='animal'){
-    const fig=buildMinifig({skin:spec.skin,hair:spec.hair,hairStyle:spec.hairStyle,headwear:spec.headwear,hat:spec.hat,shirt:spec.shirt,pants:spec.pants,neck:spec.cape?'cape':spec.beard?'beard':spec.accessory==='backpack'?'backpack':spec.headwear==='ninja'?'ninja':undefined,neckColor:spec.cape?spec.accent:spec.beard?spec.hair:spec.accent,tool:['sword','staff','wand','shield','guitar'].includes(spec.accessory)?spec.accessory:undefined,toolColor:spec.accessory==='shield'?spec.accent:71});
-    extras=fig.parts;notes.push('Includes a matching minifigure made from real plain parts.',...fig.notes);
-  }
+  if(spec.minifig&&spec.kind!=='animal'){const fig=minifigFor(spec);extras=fig.parts;notes.push('Includes a matching minifigure made from real plain parts.',...fig.notes)}
   const report=checks(model.bricks);
   notes.push(report.passed?'Character passes stud connection, collision and support checks.':'Review highlighted issues before building.');
   return{...model,name:spec.name,notes,...(extras?{extras}:{})};

@@ -7,11 +7,13 @@ import {Switch} from '@/components/ui/switch';
 import Viewer from '@/components/brickforge/viewer';
 import {color} from '@/lib/brick-engine';
 import {CHARACTER_PALETTE,SKIN_TONES} from '@/lib/color';
-import {CharacterSpec,PRESETS,PRESET_GROUPS,HAIR_STYLES,HEADWEAR,OUTFITS,ACCESSORIES,EARS,characterModel,normalizeSpec} from '@/lib/character';
+import {CharacterSpec,PRESETS,PRESET_GROUPS,HAIR_STYLES,HEADWEAR,OUTFITS,ACCESSORIES,EARS,normalizeSpec,Rig} from '@/lib/character';
+import {buildCharacter} from '@/lib/rigs';
+import {applyPreset} from '@/lib/joints';
 import {buildMinifig,minifigSvg} from '@/lib/minifig';
 import {loadPixels,subjectMask,characterColors} from '@/lib/photo';
 
-function Swatches({label,value,onChange,palette}:{label:string;value:number;onChange:(id:number)=>void;palette:number[]}){
+export function Swatches({label,value,onChange,palette}:{label:string;value:number;onChange:(id:number)=>void;palette:number[]}){
   return <div className="swatch-field"><div className="swatch-label"><span>{label}</span><small>{color(value).name}</small></div>
     <div className="swatch-row" role="radiogroup" aria-label={label}>{palette.map(id=><button key={id} type="button" role="radio" aria-checked={value===id} aria-label={color(id).name} title={color(id).name} data-selected={value===id} style={{background:color(id).hex}} onClick={()=>onChange(id)}/>)}</div></div>;
 }
@@ -22,7 +24,8 @@ function Choice<T extends string>({label,value,onChange,items}:{label:string;val
 export default function CharacterDesigner({spec,onChange,grayscale}:{spec:CharacterSpec;onChange:(s:CharacterSpec)=>void;grayscale:boolean}){
   const set=<K extends keyof CharacterSpec>(k:K,v:CharacterSpec[K])=>onChange({...spec,[k]:v});
   const photoInput=useRef<HTMLInputElement>(null);const [reading,setReading]=useState(false);
-  const preview=useMemo(()=>{try{return characterModel(spec)}catch{return null}},[spec]);
+  const preview=useMemo(()=>{try{return buildCharacter(spec)}catch{return null}},[spec]);
+  const previewPose=useMemo(()=>preview?.joints?.length?applyPreset(preview.joints,{},'wave'):undefined,[preview]);
   const fig=useMemo(()=>spec.minifig&&spec.kind!=='animal'?minifigSvg(buildMinifig({skin:spec.skin,hair:spec.hair,hairStyle:spec.hairStyle,headwear:spec.headwear,hat:spec.hat,shirt:spec.shirt,pants:spec.pants,neck:spec.cape?'cape':spec.beard?'beard':spec.accessory==='backpack'?'backpack':undefined,neckColor:spec.cape?spec.accent:spec.hair,tool:['sword','staff','wand','shield','guitar'].includes(spec.accessory)?spec.accessory:undefined,toolColor:spec.accessory==='shield'?spec.accent:71}).look,92):'',[spec]);
   const animal=spec.kind==='animal';
   const fromPhoto=async(f?:File)=>{if(!f)return;setReading(true);try{if(f.size>12000000)throw new Error('Image limit: 12 MB.');const url=URL.createObjectURL(f);try{const p=await loadPixels(url,280);const m=subjectMask(p);const c=characterColors(p,m);
@@ -32,10 +35,12 @@ export default function CharacterDesigner({spec,onChange,grayscale}:{spec:Charac
   return <div className="designer">
     <input ref={photoInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={e=>fromPhoto(e.target.files?.[0])}/>
     <div className="designer-preview">
-      <div className="designer-3d">{preview&&<Viewer grayscale={grayscale} bricks={preview.bricks} selected={null} onSelect={()=>{}}/>}</div>
+      <div className="designer-3d">{preview&&<Viewer grayscale={grayscale} bricks={preview.bricks} joints={preview.joints} pose={previewPose} selected={null} onSelect={()=>{}}/>}</div>
       {fig&&<div className="designer-fig" title="Matching minifigure in the closest real part colors" dangerouslySetInnerHTML={{__html:fig}}/>}
     </div>
-    <p className="caption centered">{preview?`${preview.bricks.length} bricks${preview.extras?.length?` + ${preview.extras.length}-part minifigure`:''} · real part colors only`:'Preview unavailable'}</p>
+    <p className="caption centered">{preview?`${preview.bricks.length} bricks${spec.minifig&&spec.kind!=='animal'?' + matching minifigure':''}${preview.joints?.length?` · ${preview.joints.length} joints`:''} · real part colors only`:'Preview unavailable'}</p>
+    <Choice label="Movement" value={spec.rig??'none'} onChange={(v:Rig)=>set('rig',v)} items={[{value:'none',label:'Statue · no moving parts'},{value:'basic',label:'Posable · Technic pins + turning head'},{value:'fancy',label:'Deluxe · ball joints, waist and head turn'}]}/>
+    {spec.rig&&spec.rig!=='none'&&<p className="caption">{spec.rig==='basic'?'Hips and shoulders swing on Technic pin bricks (3700) with friction pins (2780); the head turns on a 2 × 2 turntable.':'Hips and shoulders use ball-joint plates (14417/14704) that swing and spread; the waist and head turn on 2 × 2 turntables.'} No display base, so legs can move.</p>}
     <div className="preset-groups">{PRESET_GROUPS.map(g=><div key={g.label}><span className="starter-label">{g.label.toUpperCase()}</span><div className="preset-chips">{g.keys.map(k=><button type="button" key={k} className={spec.name===PRESETS[k].name&&spec.kind===PRESETS[k].kind?'chosen':''} onClick={()=>onChange(normalizeSpec({...PRESETS[k]}))}>{PRESETS[k].name}</button>)}</div></div>)}</div>
     <div className="designer-actions"><button type="button" className="outline" disabled={reading} onClick={()=>photoInput.current?.click()}>{reading?<LoaderCircle className="spin" size={15}/>:<Camera size={15}/>} Colors from a photo</button><button type="button" className="outline" onClick={surprise}><Shuffle size={15}/> Surprise me</button></div>
     <label className="field-label" htmlFor="character-name">Name</label><input id="character-name" className="text-input" value={spec.name} maxLength={80} onChange={e=>set('name',e.target.value)}/>

@@ -109,3 +109,35 @@ Everything below runs in the browser with no AI key. The site-provided AI remain
 Validation: `node --import tsx tests/character.test.ts` checks that every preset is connected and supported, uses real part/color combinations and real minifigure parts; it also covers the idea interpreter, photo background removal and color reading, photo sculptures, real-color mosaics, a CIEDE2000 reference value, booklet/box art/exports with minifigure parts, and inventory bins and round trips.
 
 Part images for non-grid parts load from `cdn.rebrickable.com` in the visitor's browser. Part renders © Rebrickable. The minifigure matcher uses plain assemblies only, and colors follow set-inventory observations, not live seller stock.
+
+## Moving parts: posable characters and vehicles
+
+Builds can now have real joints. Each moving section (a leg, a door, a hood) is a separate rigid sub-assembly (`brick.group`) packed on its own, so no brick spans a joint. Sections are linked by joints made from real catalog parts (`model.joints`), and the current pose is saved as `model.pose`.
+
+| Design | Basic | Deluxe |
+|---|---|---|
+| Characters (Design tab → Movement) | Hips and shoulders on Technic pin bricks `3700` with friction pins `2780`; head on a 2 × 2 turntable `3680`/`3679` | Ball-joint plates `14417`/`14704` at hips and shoulders (swing and spread), turning waist and head on turntables |
+| Cars (Design tab → Vehicle) | Doors on 1 × 4 swivel hinge plates `2429`/`2430` | Doors on 1 × 4 hinge bricks `3831`/`3830`, plus hood and trunk on hinge bricks `3937`/`3938` |
+
+All cars roll on wheel-holder plates `4600` with wheels `4624` and tires `3641`. Joint parts use colors observed in the catalog, and loose hardware (pins, wheels, tires) is listed in the parts list, CSV and BrickLink XML.
+
+- **Checks** (`checks(bricks, joints)`) treat joint links as connections. Pieces in a hanging section need a stud connection above or below. Studs pressing into a different moving section are reported as a locked joint. Sections that rest on a small joint piece get a real spanning plate (for example a 6 × 6 under a head on a 2 × 2 turntable) so they hold together.
+- **Ranges** (`jointRanges`) are each part's range, narrowed to where the moving section would first hit the rest of the model (tested every 3° from the rest pose). Each joint is tested with the other joints at rest, so posing two joints together can still collide.
+- **Posing:** the Movement panel has sliders per joint axis, presets (wave, mid-stride, cheer, look around, open doors, open everything) and looping animations (walk, wave, dance, drive, open and close). The pose is used for box art and LDraw export. Instructions show the rest pose.
+- **Instructions** build the fixed core first, then each moving section, followed by an "Attach" step showing the joint hardware.
+- **Ideas:** "a posable knight", "an action figure with ball joints", "a red car with opening doors" and "a deluxe police car" pick the right build.
+- **Using your own bricks:** a moving build is offered as designed when your bricks (or budget) cover it. Otherwise a static reinterpretation is fitted with its joints removed, and the notes say so.
+
+Limits: ranges are geometry checks, not strength or friction tests; heavy parts may droop. Joint-part CAD positions are approximations of the real elements' origins; check hinges and turntables in Studio before ordering. Loose hardware is not placed in the `.ldr`. Knees, elbows and Technic-beam mechanisms are not generated.
+
+Validation: `node --import tsx tests/joints.test.ts` covers:
+- all 64 posable characters and all car presets connected with no locked joints and useful ranges
+- real part/color combinations
+- door and waist transforms
+- presets and animations within limits
+- save and reload
+- posed LDraw with unit rotations
+- one attach step per joint
+- hardware in parts lists
+- inventory fitting behavior
+- idea parsing
