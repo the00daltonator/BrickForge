@@ -1,0 +1,15 @@
+# Copy this file to .dev.vars for local development. .dev.vars is git-ignored:
+# never commit real keys. Every setting is optional; BrickForge works without AI.
+
+# Random secret used to encrypt an API key saved through /admin.
+# Generate one with: openssl rand -hex 32
+# APP_SECRET=
+
+# Email of the site owner allowed to open /admin. Requires a host that sends a
+# trusted signed-in-user header (see README "AI features").
+# OWNER_EMAIL=
+
+# OpenAI key for the optional AI sculptor and set-photo reader.
+# Usage is billed to whoever owns this key.
+# OPENAI_API_KEY=
+# OPENAI_MODEL=gpt-5.5

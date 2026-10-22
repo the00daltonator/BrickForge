@@ -45,3 +45,11 @@ next-env.d.ts
 /outputs/
 /work/
 /dist-static/
+
+# Local secrets for `wrangler dev` / the Cloudflare Vite plugin
+.dev.vars*
+!.dev.vars.example
+
+# Hosting-provider project config and TypeScript build cache
+/.openai/
+*.tsbuildinfo
