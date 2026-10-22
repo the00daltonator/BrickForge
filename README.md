@@ -21,8 +21,8 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the full feature list, design notes
 You need [Node.js](https://nodejs.org) 22.13 or newer and Git.
 
 ```bash
-git clone https://github.com/<your-username>/brickforge.git
-cd brickforge
+git clone https://github.com/the00daltonator/LEGO-BrickForge.git
+cd LEGO-BrickForge
 npm ci
 npm run db:setup
 npm run dev
