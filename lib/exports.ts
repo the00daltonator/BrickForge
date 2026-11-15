@@ -1,4 +1,4 @@
-import {Joint,Model,Brick,Stock,modelChecks,PARTS,COLORS,part,partName,partCost,color,dims,bounds,bom,layers,checks,validateModel,ldrawColor,studCells} from './brick-engine';
+import {Joint,Model,Brick,Stock,modelChecks,COLORS,part,partName,partCost,color,dims,bounds,bom,layers,checks,validateModel,ldrawColor,studCells} from './brick-engine';
 import {sceneFaces,facesToSvg,partIconSvg,Face} from './render';
 import {minifigSvg,lookFromParts,isMinifigPart} from './minifig';
 import {figuresOf} from './minifig-3d';

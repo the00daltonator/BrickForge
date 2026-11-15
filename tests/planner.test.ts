@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {Brick,Model,checks,recipe,bom,PARTS,part,tileFinish} from '../lib/brick-engine';
+import {Brick,Model,checks,recipe,bom,PARTS,part} from '../lib/brick-engine';
 import {planBuild,exportProblems,backingRaft,missingCost} from '../lib/build-planner';
 const brick=(id:string,x:number,y:number,z:number,p='3005',rot=false):Brick=>({id,part:p,color:15,x,y,z,rot});
 const model=(bricks:Brick[]):Model=>({version:1,name:'test',source:'test',bricks,notes:[]});

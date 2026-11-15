@@ -1,7 +1,7 @@
-import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';import {DatabaseSync,type SQLInputValue} from 'node:sqlite';import {readFileSync} from 'node:fs';
 import {env} from './runtime-env';import {POST as ai} from '../app/api/ai/route';import {GET as adminGet,POST as adminPost} from '../app/api/admin/route';import {GET as workspaceGet,PUT as workspacePut} from '../app/api/workspace/route';import {serviceConfig} from '../lib/server/service';
 const sql=new DatabaseSync(':memory:');sql.exec(readFileSync('drizzle/0000_young_luke_cage.sql','utf8'));
-env.DB={prepare:(query:string)=>({bind:(...args:unknown[])=>({first:async()=>sql.prepare(query).get(...args as any[])||null,run:async()=>sql.prepare(query).run(...args as any[])})})};env.OWNER_EMAIL='owner@example.test';env.APP_SECRET='a-test-only-secret';
+env.DB={prepare:(query:string)=>({bind:(...args:unknown[])=>({first:async()=>sql.prepare(query).get(...args as SQLInputValue[])||null,run:async()=>sql.prepare(query).run(...args as SQLInputValue[])})})};env.OWNER_EMAIL='owner@example.test';env.APP_SECRET='a-test-only-secret';
 const request=(path:string,body:unknown,owner=false,headers:Record<string,string>={})=>new Request('https://brickforge.test'+path,{method:'POST',headers:{'content-type':'application/json',origin:'https://brickforge.test',...(owner?{'oai-authenticated-user-email':env.OWNER_EMAIL}:{}),...headers},body:JSON.stringify(body)});
 assert.equal((await adminPost(request('/api/admin',{apiKey:'sk-test000000000000000000'}))).status,403);
 assert.equal((await adminGet(new Request('https://brickforge.test/api/admin'))).status,403);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
-import {recipe,pack,unpack,bom,stockMap,key,checks,PARTS,validateModel,shapesModel} from '../lib/brick-engine';
+import {recipe,pack,unpack,bom,stockMap,key,checks,validateModel,shapesModel} from '../lib/brick-engine';
 import {ldraw,fromLdraw,buildPack,instructions,csv,xml} from '../lib/exports';
 import {meshToModel} from '../lib/mesh';
 for(const type of ['Astronaut','Robot','Cat','Castle','Rocket','Dinosaur'])for(const size of [1,2]){

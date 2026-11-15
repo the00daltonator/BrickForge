@@ -164,3 +164,13 @@ Results:
 **Minifigure versions.** In Design → Character, choose *Minifigure* to build the character as a real minifigure (plain head, torso assembly, hips and legs, hair or headwear, neckwear and a held accessory, in the closest real colors) on a 4 × 4 display plate. Its head, arms and legs pose in the Movement panel, including the walk and wave animations, and the 3D view, box art and instructions draw it. Statue characters also show their matching minifigure on the corner of the display base. Animal characters need special printed heads, so they stay brick figures. Typed ideas understand "minifigure" too.
 
 Validation: `node --import tsx tests/supports.test.ts`.
+
+## Wider typed ideas
+
+The offline idea interpreter (`lib/idea.ts`) matches whole words only, so "helicopter pilot" is no longer read as a police officer ("cop") and "decorated general" is no longer a mouse ("rat").
+- **More subjects:** nurse, farmer, pilot, soldier, athlete, clown, Santa, gnome, elf, fairy, mermaid, vampire, skeleton, ghost, snowman, grandma and grandpa, plus lion, tiger, wolf, polar bear, koala, monkey, pig, cow, horse, unicorn and duck. Each one is an existing designer preset with new colors and details, so it uses the same real parts and passes the same checks. These are approximations: a mermaid has no tail fin and a unicorn has no horn.
+- **Colors:** a color before the subject colors it ("a blue ninja", "a dark red robot", "a pink unicorn"). A color that belongs to a garment or prop is not reused ("an orange cat with a red scarf").
+- **Names and worn items:** "named Bob" is a name, not a bob haircut, and "a girl with cat ears and a cowboy hat" stays a girl.
+- **Unrecognized ideas:** descriptions outside the vocabulary ("a house", "a shark") still build a plain figure, and the Idea tab now says so and suggests what to try.
+
+Validation: `node --import tsx tests/idea.test.ts`.

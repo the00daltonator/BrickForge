@@ -38,7 +38,8 @@ Then open the address `npm run dev` prints (normally http://localhost:5173).
 | Command | What it does |
 |---|---|
 | `npm run dev` | Start the development server with live reload |
-| `npm test` | Run all test suites (engine, planner, interlock, character, joints, supports, server) |
+| `npm test` | Run all test suites (engine, planner, interlock, character, idea, joints, supports, server) |
+| `npm run typecheck` | Check types with TypeScript |
 | `npm run db:setup` | Create or update the local database |
 | `npm run build` | Build the full app (Cloudflare Worker + site) into `dist/` |
 | `npx vite build --config vite.static.config.ts` | Build a browser-only version into `dist-static/` |
@@ -96,7 +97,7 @@ node scripts/build-minifig-data.mjs
 
 ## Contributing
 
-Issues and pull requests are welcome. Please run `npm test` before opening a pull request.
+Issues and pull requests are welcome. Please run `npm test`, `npm run typecheck` and `npm run lint` before opening a pull request; the same checks run on GitHub Actions.
 
 ## License
 
